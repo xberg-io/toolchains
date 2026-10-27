@@ -47,7 +47,10 @@ class CheckTest(unittest.TestCase):
         code, out, err = self.run_main()
 
         self.assertEqual(code, 0, err)
-        self.assertEqual(out.strip(), "checked 3 tools against the baseline: node, python, rust")
+        self.assertEqual(
+            out.strip(),
+            "checked 3 tools against the baseline: node, python, rust\nrepository-owned, not in the baseline: local-only",
+        )
 
     def test_drifted_version_fails(self) -> None:
         self.write("mise.toml", '[tools]\nnode = "22.20.0"\n')
@@ -114,14 +117,31 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("mise.toml: not found", err)
 
-    def test_rust_disagreement_between_files_is_an_error(self) -> None:
+    def test_rust_in_mise_toml_is_rejected(self) -> None:
         self.write("mise.toml", '[tools]\nrust = "1.99.1"\n')
-        self.write("rust-toolchain.toml", '[toolchain]\nchannel = "1.95"\n')
 
         code, _, err = self.run_main()
 
         self.assertEqual(code, 2)
-        self.assertIn("rust is 1.99.1 in mise.toml but 1.95 in rust-toolchain.toml", err)
+        self.assertIn("declare rust in rust-toolchain.toml, not mise.toml", err)
+
+    def test_alias_of_a_baseline_tool_is_drift_not_skipped(self) -> None:
+        for key in ("nodejs", '"core:node"', '"aqua:nextest-rs/nextest"'):
+            with self.subTest(key=key):
+                self.write("mise.toml", f'[tools]\npython = "3.13.18"\n{key} = "20.0.0"\n')
+
+                code, _, err = self.run_main()
+
+                self.assertEqual(code, 1)
+                self.assertIn("spelled differently from the baseline", err)
+
+    def test_missing_table_options_are_drift(self) -> None:
+        self.write("mise.toml", '[tools]\n"github:nextest-rs/nextest" = "0.9.149"\n')
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn("options {} differ from the baseline's {'version_prefix': 'cargo-nextest-'}", err)
 
 
 class SyncTest(unittest.TestCase):
@@ -192,6 +212,49 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(out, "updated 1 pins: python")
         self.assertEqual((self.repo / "mise.toml").read_text(), '[tools]\nnode = "22.20.0"\npython = "3.13.18"\n')
         self.assertTrue((self.repo / "toolchains.toml").read_text().startswith('baseline = "v1.1.0"\n'))
+
+    def test_single_quotes_header_comment_and_crlf_survive(self) -> None:
+        (self.repo / "mise.toml").write_bytes(b"[tools] # pinned\r\nnode = '22.20.0'\r\n'python' = \"3.12.1\"\r\n")
+        (self.repo / "rust-toolchain.toml").write_bytes(b"[toolchain]\r\n  channel = '1.95'\r\n")
+        (self.repo / "toolchains.toml").write_text("baseline = 'v1.0.0'\n")
+
+        code, out = self.sync("--ref", "v1.1.0")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "updated 3 pins: node, python, rust")
+        self.assertEqual(
+            (self.repo / "mise.toml").read_bytes(),
+            b"[tools] # pinned\r\nnode = '24.22.1'\r\n'python' = \"3.13.18\"\r\n",
+        )
+        self.assertEqual((self.repo / "rust-toolchain.toml").read_bytes(), b"[toolchain]\r\n  channel = '1.99.1'\r\n")
+        self.assertEqual((self.repo / "toolchains.toml").read_text(), 'baseline = "v1.1.0"\n')
+
+    def test_unrewritable_entry_fails_and_writes_nothing(self) -> None:
+        original = '[tools]\nnode = "22.20.0"\n\n[tools.python]\nversion = "3.12.1"\n'
+        (self.repo / "mise.toml").write_text(original)
+        (self.repo / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.95"\n')
+
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = toolchains.main(["sync", "--baseline", str(self.baseline), "--repo", str(self.repo), "--ref", "v2"])
+
+        self.assertEqual(code, 2)
+        self.assertIn("could not rewrite the pin for: python", err.getvalue())
+        self.assertEqual((self.repo / "mise.toml").read_text(), original)
+        self.assertEqual((self.repo / "rust-toolchain.toml").read_text(), '[toolchain]\nchannel = "1.95"\n')
+        self.assertFalse((self.repo / "toolchains.toml").exists())
+
+    def test_missing_table_options_are_not_silently_synced(self) -> None:
+        original = '[tools]\n"github:nextest-rs/nextest" = "0.9.100"\n'
+        (self.repo / "mise.toml").write_text(original)
+
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = toolchains.main(["sync", "--baseline", str(self.baseline), "--repo", str(self.repo)])
+
+        self.assertEqual(code, 2)
+        self.assertIn("copy the baseline's table options by hand for: github:nextest-rs/nextest", err.getvalue())
+        self.assertEqual((self.repo / "mise.toml").read_text(), original)
 
     def test_repo_on_baseline_reports_no_change(self) -> None:
         (self.repo / "mise.toml").write_text('[tools]\nnode = "24.22.1"\n')
