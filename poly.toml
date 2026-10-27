@@ -1,0 +1,137 @@
+
+[defaults]
+line_length = 120
+line_ending = "lf"
+final_newline = true
+trim_trailing_whitespace = true
+
+[lint.markdown.rumdl]
+disable = ["MD012", "MD013", "MD024", "MD033", "MD036", "MD041", "MD046", "MD051", "MD076"]
+
+
+[lint.uncomment]
+enabled = true
+remove_todos = false
+remove_fixme = false
+remove_docs = false
+use_default_ignores = true
+preserve_patterns = [
+  "SAFETY",
+  "HACK",
+  "WORKAROUND",
+  "NOTE",
+  "Copyright",
+  "Licensed",
+  "License",
+  "SPDX",
+  "Apache",
+  "MIT",
+  "WITHOUT WARRANTIES",
+  "limitations under the License",
+  "copyright",
+  "licensed",
+  "license",
+  "apache",
+  "you may not use this file except in compliance",
+  "You may obtain a copy of the License",
+  "you may obtain a copy of the license",
+  "http://www.apache.org/licenses/LICENSE-2.0",
+  "http://www.apache.org/licenses/license-2.0",
+  "Unless required by applicable law",
+  "unless required by applicable law",
+  "distributed under the License",
+  "distributed under the license",
+  "AS IS",
+  "as is",
+  "without warranties",
+  "specific language governing permissions",
+  "limitations under the license",
+]
+# MD025 stays enabled for lint but disabled for fmt: rumdl's autofix for a second
+# level-1 heading demotes every heading that follows it, which silently reparents a
+# whole CHANGELOG under [Unreleased] and breaks release-note extraction. ~keep
+[fmt.markdown.rumdl]
+disable = ["MD012", "MD013", "MD024", "MD033", "MD036", "MD041", "MD046", "MD051", "MD076", "MD025"]
+
+[hooks]
+stages = ["pre-commit"]
+
+[hooks.builtin]
+lint = { exclude = [
+  "**/*.lock",
+  "**/Cargo.lock",
+  "**/go.sum",
+  "**/package-lock.json",
+  "**/pnpm-lock.yaml",
+  "**/uv.lock",
+  "docs/snippets/**",
+  "invalid*/**",
+  "node_modules/**",
+  "target/**",
+  "v3/**",
+  "vendor/**",
+  "crates/*-ffi/include/*.h",
+  "packages/go/include/*.h",
+  "/.ai-rulez/.generated-manifest.json",
+] }
+fmt = { exclude = [
+  "**/*.lock",
+  "**/Cargo.lock",
+  "**/go.sum",
+  "**/package-lock.json",
+  "**/pnpm-lock.yaml",
+  "**/uv.lock",
+  "docs/snippets/**",
+  "invalid*/**",
+  "node_modules/**",
+  "target/**",
+  "v3/**",
+  "vendor/**",
+  "crates/*-ffi/include/*.h",
+  "packages/go/include/*.h",
+  "/.ai-rulez/.generated-manifest.json",
+] }
+commit = { stages = ["commit-msg"] }
+file_safety = { exclude = [
+  "**/*.lock",
+  "**/Cargo.lock",
+  "**/go.sum",
+  "**/package-lock.json",
+  "**/pnpm-lock.yaml",
+  "**/uv.lock",
+  "docs/snippets/**",
+  "invalid*/**",
+  "node_modules/**",
+  "target/**",
+  "v3/**",
+  "vendor/**",
+  "crates/*-ffi/include/*.h",
+  "packages/go/include/*.h",
+  "/.ai-rulez/.generated-manifest.json",
+] }
+
+[tools.actionlint]
+enabled = true
+
+
+[per-file-ignores]
+"e2e/**" = ["comment", "doc-comment"]
+"**/e2e/**" = ["comment", "doc-comment"]
+"test_apps/**" = ["comment", "doc-comment"]
+"**/test_apps/**" = ["comment", "doc-comment"]
+"docs/assets/**" = ["comment", "doc-comment"]
+"**/generated/**" = ["comment", "doc-comment"]
+"**/*.generated.*" = ["comment", "doc-comment"]
+"**/*.g.*" = ["comment", "doc-comment"]
+"**/*.freezed.*" = ["comment", "doc-comment"]
+"crates/*-ffi/include/*.h" = ["comment", "doc-comment"]
+"packages/go/include/*.h" = ["comment", "doc-comment"]
+"Package.swift" = ["comment", "doc-comment"]
+[[hooks.sources]]
+id = "ai-rulez"
+git = "https://github.com/Goldziher/ai-rulez.git"
+revision = "v5.7.0"
+hooks = ["ai-rulez-validate"]
+
+[discovery]
+exclude = ["/.ai-rulez/.generated-manifest.json"]

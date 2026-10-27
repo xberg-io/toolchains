@@ -1,0 +1,53 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Org toolchain preset: baseline tools move only through `toolchains.py sync`; repo-owned mise tools are grouped.",
+  "packageRules": [
+    {
+      "description": "Baseline tools follow xberg-io/toolchains, not upstream releases. Keep this list equal to baseline.toml [tools].",
+      "matchManagers": ["mise"],
+      "matchDepNames": [
+        "actionlint",
+        "aws-cli",
+        "bats",
+        "cargo-deny",
+        "dotnet",
+        "gh",
+        "github:DevinR528/cargo-sort",
+        "github:Goldziher/ai-rulez",
+        "github:Goldziher/poly",
+        "github:bnjbvr/cargo-machete",
+        "github:nextest-rs/nextest",
+        "github:rust-cross/cargo-zigbuild",
+        "github:rustwasm/wasm-pack",
+        "github:taiki-e/cargo-llvm-cov",
+        "github:xberg-io/alef",
+        "go",
+        "gradle",
+        "helm",
+        "java",
+        "jq",
+        "k6",
+        "kubectl",
+        "lychee",
+        "maven",
+        "node",
+        "opentofu",
+        "pnpm",
+        "python",
+        "ruby",
+        "rust",
+        "sccache",
+        "task",
+        "uv",
+        "yq",
+        "zig"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Group the repository's own mise tools",
+      "matchManagers": ["mise"],
+      "groupName": "repo toolchain"
+    }
+  ]
+}

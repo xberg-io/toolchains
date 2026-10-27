@@ -1,0 +1,8 @@
+
+respect-gitignore = true
+exclude = ["node_modules", "target", "dist", "vendor", ".ai-rulez"]
+
+disable = ["MD012", "MD013", "MD024", "MD033", "MD036", "MD041", "MD046", "MD051", "MD076"]
+
+[MD024]
+siblings_only = true

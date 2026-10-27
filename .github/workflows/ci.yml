@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - run: python -m unittest discover -s tests -v
+      - name: This repository follows its own baseline
+        run: python scripts/toolchains.py check --baseline baseline.toml
+      - run: poly lint .
+      - run: poly fmt --check .
+
+  resolve-baseline:
+    # Every baseline pin must resolve, with checksums, on every platform consumers lock for.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install: false
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Lock the baseline for all consumer platforms
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          work="$(mktemp -d)"
+          cp baseline.toml "$work/mise.toml"
+          cd "$work"
+          mise trust --quiet .
+          mise lock --platform linux-x64,linux-arm64,macos-arm64,windows-x64
+          python3 - <<'PY'
+          import sys
+          import tomllib
+
+          platforms = {"linux-x64", "linux-arm64", "macos-arm64", "windows-x64"}
+          # Platforms a tool legitimately cannot lock: no upstream build, or installed by a script without a
+          # checksummed artifact. A new gap fails until it is listed here with its reason.
+          exceptions = {
+              "aws-cli": {"windows-x64"},  # upstream ships an MSI only
+              "bats": {"windows-x64"},  # shell framework, unix only
+              "ruby": {"windows-x64"},  # no precompiled Windows build
+              "github:DevinR528/cargo-sort": {"linux-arm64"},  # no arm64 release asset
+              "dotnet": platforms,  # dotnet-install script, no artifact checksum
+              "rust": platforms,  # rustup-managed
+          }
+          tools = tomllib.load(open("mise.toml", "rb"))["tools"]
+          locked = tomllib.load(open("mise.lock", "rb"))["tools"]
+          failures = []
+          for name in tools:
+              entry = locked.get(name, [{}])[0]
+              have = {key.removeprefix("platforms.") for key in entry if key.startswith("platforms.")}
+              missing = platforms - have - exceptions.get(name, set())
+              if missing:
+                  failures.append(f"{name}: no lock for {sorted(missing)}")
+          for name in sorted(set(exceptions) - set(tools)):
+              failures.append(f"{name}: listed as an exception but not in the baseline")
+          print(f"checked lock coverage for {len(tools)} tools")
+          print("\n".join(failures), file=sys.stderr)
+          sys.exit(1 if failures else 0)
+          PY

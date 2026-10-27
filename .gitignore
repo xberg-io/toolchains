@@ -1,0 +1,5 @@
+__pycache__/
+.polylint/
+.rumdl_cache/
+poly.local.toml
+mise.local.toml
