@@ -24,7 +24,7 @@ rust = "1.99.1"
 
 # Task runner and org CLIs
 task = "3.54.0"
-"github:Goldziher/poly" = "0.30.0"
+"github:Goldziher/poly" = "0.29.0"
 "github:Goldziher/ai-rulez" = "5.8.0"
 "github:xberg-io/alef" = "0.115.5"
 
