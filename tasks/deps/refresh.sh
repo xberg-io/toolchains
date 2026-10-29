@@ -24,7 +24,12 @@ package_dir() {
 
 refresh_zig() {
   local urls url
-  urls="$(grep '\.url' build.zig.zon | cut -d '=' -f 2 | cut -d '#' -f 1 | tr -d '", ')"
+  # grep exits 1 for a manifest that pins no URL; under pipefail that is not an error here. ~keep
+  urls="$({ grep '\.url' build.zig.zon || true; } | cut -d '=' -f 2 | cut -d '#' -f 1 | tr -d '", ')"
+  if [ -z "$urls" ]; then
+    echo "zig: build.zig.zon pins no dependency URL; nothing to refresh"
+    return
+  fi
   for url in $urls; do
     echo "Updating module $url"
     zig fetch --save "$url"

@@ -194,6 +194,15 @@ class DepsRefreshTest(StubbedTaskTest):
             ["zig fetch --save https://example.com/a.tar.gz", "zig fetch --save https://example.com/b.tar.gz"],
         )
 
+    def test_zig_with_no_pinned_url_succeeds_without_fetching(self) -> None:
+        self.stub("zig")
+        (self.root / "packages" / "zig").mkdir(parents=True)
+        (self.root / "packages" / "zig" / "build.zig.zon").write_text('.{\n    .name = .demo,\n    .dependencies = .{},\n}\n')
+        result = self.run_task("deps/refresh.sh", usage_mode="upgrade", usage_lang="zig")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("nothing to refresh", result.stdout)
+        self.assertEqual(self.called(), [])
+
     def test_all_requires_deps_langs(self) -> None:
         self.assertNotEqual(self.run_task("deps/refresh.sh", usage_mode="update", usage_lang="all").returncode, 0)
 
