@@ -60,7 +60,7 @@ lands once and repositories pick it up on the next baseline move:
 
 ```toml
 [tasks."governance:hooks:install"]
-file = "https://raw.githubusercontent.com/xberg-io/toolchains/v1.4.0/tasks/governance/hooks-install.sh"
+file = "https://raw.githubusercontent.com/xberg-io/toolchains/v1.5.0/tasks/governance/hooks-install.sh"
 ```
 
 Use the same tag as `toolchains.toml`. Keep one-line tasks (`governance:check`, `lint`) inline in `mise.toml`.
@@ -68,6 +68,11 @@ Use the same tag as `toolchains.toml`. Keep one-line tasks (`governance:check`, 
 | Task | File |
 |---|---|
 | `governance:hooks:install` | `tasks/governance/hooks-install.sh`: allow the system hook channel in `poly.local.toml`, then `poly hooks install` |
+| `alef:pin:check` | `tasks/alef/pin-check.sh`: fail unless the alef on PATH is the clean release `alef.toml` pins |
+| `alef:regenerate` | `tasks/alef/regenerate.sh`: run every alef generator that writes the version |
+| `alef:verify:strict` | `tasks/alef/verify-strict.sh`: `alef verify`, failing on drifted frozen paths too |
+| `version:show` | `tasks/version/cargo.sh`: print the workspace version from `Cargo.toml` |
+| `deps <update\|upgrade> [lang]` | `tasks/deps/refresh.sh`: refresh one ecosystem or every one in `DEPS_LANGS`; repository specifics in the task's `env` (`DEPS_<LANG>_DIR`, `DEPS_NODE_DIRS`, `DEPS_RUST_MANIFESTS`) |
 
 ## Lock gaps
 
