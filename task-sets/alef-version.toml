@@ -1,0 +1,28 @@
+# Version bumps through alef sync-versions, for a Cargo workspace.
+# requires: version:sync (repository-owned: propagates the version to everything alef does not manage)
+
+["version:show"]
+description = "Show current version from Cargo.toml"
+file = "mise-tasks/.shared/alef-version/show.sh"
+
+["version:bump:major"]
+description = "Bump major version (X.0.0) and sync"
+run = ["alef sync-versions --bump major", { task = "version:sync" }]
+
+["version:bump:minor"]
+description = "Bump minor version (0.X.0) and sync"
+run = ["alef sync-versions --bump minor", { task = "version:sync" }]
+
+["version:bump:patch"]
+description = "Bump patch version (0.0.X) and sync"
+run = ["alef sync-versions --bump patch", { task = "version:sync" }]
+
+["version:set"]
+description = "Set the version explicitly and sync"
+usage = 'arg "<version>" help="Version to set, e.g. 1.2.0-rc.1"'
+run = ['alef sync-versions --set "$usage_version"', { task = "version:sync" }]
+
+["alef:sync"]
+description = "Sync the version to all manifests"
+alias = "versions:sync"
+run = [{ task = "version:sync" }]

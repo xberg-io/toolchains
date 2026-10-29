@@ -1,0 +1,17 @@
+# Starlight documentation site. DOCS_DIR (default docs-site) names its directory.
+
+["docs:build"]
+description = "Build documentation"
+run = ['pnpm --dir "${DOCS_DIR:-docs-site}" install --frozen-lockfile', 'pnpm --dir "${DOCS_DIR:-docs-site}" build']
+
+["docs:build:strict"]
+description = "Build documentation (CI-equivalent; astro build fails on errors)"
+run = [{ task = "docs:build" }]
+
+["docs:serve"]
+description = "Serve documentation locally with live reload"
+run = ['pnpm --dir "${DOCS_DIR:-docs-site}" install', 'pnpm --dir "${DOCS_DIR:-docs-site}" dev']
+
+["docs:lint:prose"]
+description = "Lint prose with textlint"
+run = 'pnpm exec textlint "${DOCS_DIR:-docs-site}/src/content/docs/**/*.{md,mdx}"'

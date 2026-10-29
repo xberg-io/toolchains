@@ -1,0 +1,61 @@
+# alef-managed bindings: generation, verification and publishing.
+
+["alef:build"]
+description = "Build all language bindings"
+run = "alef build"
+
+["alef:docs"]
+description = "Generate API reference documentation"
+run = "alef docs"
+
+["alef:format"]
+description = "Format Alef-managed generated outputs"
+run = "alef fmt"
+
+["alef:pin:check"]
+description = "Fail unless the alef on PATH is the clean release alef.toml pins"
+file = "mise-tasks/.shared/alef/pin-check.sh"
+
+["alef:regenerate"]
+description = "Regenerate every alef output that carries the version"
+file = "mise-tasks/.shared/alef/regenerate.sh"
+
+["alef:snippets"]
+description = "Validate documentation snippets (needs built artifacts; run after alef build)"
+run = "alef snippets check"
+
+["alef:verify"]
+description = "Check Alef-generated files are up to date"
+run = "alef verify --exit-code"
+
+["alef:verify:strict"]
+description = "Run alef verify and fail on drifted frozen paths too"
+file = "mise-tasks/.shared/alef/verify-strict.sh"
+
+["e2e:generate"]
+description = "Generate E2E tests for all languages from fixtures"
+run = "alef e2e generate"
+
+["readme:generate"]
+description = "Generate package READMEs"
+run = "alef readme"
+
+["test:bindings"]
+description = "Run binding test suites only"
+run = "alef test"
+
+["publish:build"]
+description = "Build release artifacts for all languages"
+run = "alef publish build"
+
+["publish:package"]
+description = "Package built artifacts into distributable archives"
+run = "alef publish package -o dist/"
+
+["publish:prepare"]
+description = "Prepare packages for publishing (vendor deps, stage FFI)"
+run = "alef publish prepare"
+
+["publish:validate"]
+description = "Validate publish manifests are consistent"
+run = "alef publish validate"

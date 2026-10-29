@@ -8,8 +8,9 @@ every repository installs locally and in CI.
 | Path | Purpose |
 |---|---|
 | `baseline.toml` | Canonical versions, in mise `[tools]` syntax. Renovate bumps them here first. |
-| `scripts/toolchains.py` | `check` reports drift from the baseline; `sync` rewrites a repository's pins to it. Standard library only, Python 3.11+. |
-| `tasks/` | Shared mise file tasks that consuming repositories reference by tag (see below). |
+| `scripts/toolchains.py` | `check` reports drift from the baseline and the task sets; `sync` rewrites a repository's pins and shared tasks. Standard library only, Python 3.11+. |
+| `task-sets/` | Named sets of mise tasks that `sync` writes into a repository (see [Task sets](#task-sets)). |
+| `tasks/` | Deprecated: shared file tasks referenced by URL; use task sets. |
 | `default.json` | Renovate preset for consumers: turns off upstream bumps for baseline tools, groups repo-owned ones. |
 
 ## Consuming repositories
@@ -56,17 +57,87 @@ go-task files, since the org runs its tasks with mise: a `Taskfile.yml`, `Taskfi
 ignored `.task/` cache passes; elsewhere the files on disk are checked. `sync` writes nothing when any pin cannot be rewritten
 (for example a `[tools.node]` subtable) or when table options differ from the baseline; fix those by hand.
 
-## Shared tasks
+## Task sets
 
-Tasks that every repository needs with the same body live under `tasks/` and are referenced by tag, so a fix
-lands once and repositories pick it up on the next baseline move:
+Tasks that several repositories define with the same body live here as named sets, so a fix lands once and
+repositories pick it up on the next baseline move. A repository opts in from `toolchains.toml`:
+
+```toml
+baseline = "v1.6.0"
+task_sets = ["governance", "lint-format", "rust"]
+
+[task_overrides]
+"rust:format:check" = "also checks the e2e crate, which is outside the workspace"
+```
+
+`sync` (same command as in [Moving to a new baseline](#moving-to-a-new-baseline)) then writes, all generated and
+committed:
+
+- `mise-tasks/shared.toml`: the selected sets' tasks, under a header naming the toolchains tag;
+- `mise-tasks/.shared/<set>/…`: the sets' file tasks, executable, plus `.manifest`, the list of files sync owns.
+  The directory is hidden because mise registers every executable under an included directory as a task;
+- `"mise-tasks"` and `"mise-tasks/shared.toml"` in `mise.toml`'s `[task_config] includes`, adding the table when it
+  is missing. `includes` replaces mise's default scan, so sync also keeps any default task directory
+  (`.mise-tasks`, `.mise/tasks`, …) the repository has.
+
+Dropping a set deletes the files sync wrote for it, as listed in the manifest. Do not edit the generated files: change
+the set here and tag a release.
+
+A task listed under `task_overrides` is left out of `shared.toml` (with its aliases) and stays the repository's own,
+for a body that must differ. Every other task a selected set provides must not be defined locally: `check` exits 1
+when `mise.toml`, an included or `mise-tasks/*.toml` file, or an executable file task defines one of those names or
+aliases. It also exits 1 on an unknown set, an override without a reason or for a task no selected set provides, a
+missing include, and any generated file that differs from what `sync` would write, including one sync did not write
+under `mise-tasks/.shared/`.
+
+Repository specifics come from the environment with a default, never a repository name: set `DOCS_DIR` (default
+`docs-site`) or the `deps-refresh` variables in `mise.toml`'s `[env]`.
+
+| Set | Tasks | Notes |
+|---|---|---|
+| `governance` | `governance:check`, `governance:generate`, `governance:hooks:install` | needs `ai-rulez` |
+| `lint-format` | `lint` (alias `lint:check`), `format`, `format:check` | repository-wide `poly` |
+| `docs-site` | `docs:build`, `docs:build:strict`, `docs:serve`, `docs:lint:prose` | `DOCS_DIR` |
+| `docs-snippets` | `docs:snippets:list`, `docs:snippets:list:lang`, `docs:snippets:audit`, `docs:snippets:gaps` | alef snippets; `DOCS_DIR` |
+| `rust` | `rust:format`, `rust:format:check`, `rust:clean`, `rust:licenses` | Cargo workspace |
+| `alef` | `alef:build`, `alef:docs`, `alef:format`, `alef:pin:check`, `alef:regenerate`, `alef:snippets`, `alef:verify`, `alef:verify:strict`, `e2e:generate`, `readme:generate`, `test:bindings`, `publish:{build,package,prepare,validate}` | alef-managed bindings |
+| `alef-version` | `version:show`, `version:bump:{major,minor,patch}`, `version:set`, `alef:sync` (alias `versions:sync`) | the repository defines `version:sync` |
+| `plugin` | `plugin:generate`, `plugin:verify`, `plugin:skills:test`, `plugin:launcher:test`, `plugin:hermes:test`, `plugin:test` | ai-rulez plugin and public skills scripts |
+| `deps-refresh` | `deps <update\|upgrade> [lang]` | `DEPS_LANGS`, `DEPS_<LANG>_DIR`, `DEPS_NODE_DIRS`, `DEPS_RUST_MANIFESTS` in `[env]` |
+
+### Why these members
+
+A task joins a set when its body is identical in at least two repositories and in at least half of the repositories
+that define the name, so overrides stay the exception. Counts are repositories with that exact body / repositories
+defining the name, from every repository's default branch in October 2026 (remote file tasks count by source file).
+
+| Set | Members (identical / defining) |
+|---|---|
+| `governance` | `governance:check` 16/17, `governance:hooks:install` 17/17; `governance:generate`: `ai-rulez generate` in 4 repositories under 4 names, one canonical name now |
+| `lint-format` | `format` 10/13, `format:check` 8/8, `lint` 8/14; `lint:check` stays an alias because five repositories' own `check` task calls it |
+| `docs-site` | `docs:build` 7/8, `docs:serve` 7/8, `docs:build:strict` 5/5, `docs:lint:prose` 4/8 |
+| `docs-snippets` | `docs:snippets:list` 5/5, `docs:snippets:list:lang` 4/4, `docs:snippets:audit` 4/5, `docs:snippets:gaps` 4/5; apart from `docs-site` because the docs-only repositories have no alef |
+| `rust` | `rust:format` 6/6, `rust:format:check` 5/6, `rust:clean` 5/5, `rust:licenses` 2/2 |
+| `alef` | `alef:build` 4/4, `alef:regenerate` 4/4, `alef:verify:strict` 4/4, `test:bindings` 4/4, `publish:*` 4/4 each, `alef:verify` 4/5, `alef:docs` 3/4, `alef:snippets` 3/4, `readme:generate` 3/3, `e2e:generate` 3/5, `alef:format` 2/2, `alef:pin:check` 2/2 |
+| `alef-version` | `version:show` 5/6, `version:bump:*` 4/6 each, `alef:sync` 3/4, `version:set` 2/3 among alef repositories; `versions:sync` stays an alias because documentation calls it |
+| `plugin` | `plugin:generate` 6/6, `plugin:verify` 6/6, `plugin:skills:test` 6/6, `plugin:launcher:test` 5/5, `plugin:hermes:test` 4/6, `plugin:test` 3/5 |
+| `deps-refresh` | `deps` 5/5, already one shared file |
+
+Left out because the bodies diverge per repository: `rust:build`, `rust:test`, `rust:doc`, `rust:lint`,
+`docs:lint:links`, `docs:snippets:validate`, `docs:snippets:all`, `alef:generate`, `version:sync`, `setup`.
+
+## Shared tasks (deprecated)
+
+Use [task sets](#task-sets) instead. These remote file tasks stay at every tag so repositories that still reference
+them keep working, and each is byte-identical to its task set copy (a test enforces this). Repositories reference
+them by tag:
 
 ```toml
 [tasks."governance:hooks:install"]
 file = "https://raw.githubusercontent.com/xberg-io/toolchains/v1.5.0/tasks/governance/hooks-install.sh"
 ```
 
-Use the same tag as `toolchains.toml`. Keep one-line tasks (`governance:check`, `lint`) inline in `mise.toml`.
+Use the same tag as `toolchains.toml`.
 
 | Task | File |
 |---|---|

@@ -1,0 +1,18 @@
+# alef documentation snippets under the docs site. DOCS_DIR (default docs-site) names its directory.
+
+["docs:snippets:list"]
+description = "List all documentation snippets discovered by alef"
+run = 'alef snippets list --snippets "${DOCS_DIR:-docs-site}/src/snippets"'
+
+["docs:snippets:list:lang"]
+description = "List snippets filtered to specific languages (e.g. rust,python)"
+usage = 'arg "<languages>" env="LANGUAGES" help="Comma-separated snippet languages"'
+run = 'alef snippets list --snippets "${DOCS_DIR:-docs-site}/src/snippets" --languages "$usage_languages"'
+
+["docs:snippets:audit"]
+description = "Audit snippet structure under the docs site"
+run = 'alef snippets audit --snippets "${DOCS_DIR:-docs-site}/src/snippets"'
+
+["docs:snippets:gaps"]
+description = "Report unreferenced snippets + missing language variants"
+run = 'alef snippets gaps --snippets "${DOCS_DIR:-docs-site}/src/snippets" --docs "${DOCS_DIR:-docs-site}/src/content/docs"'

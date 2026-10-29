@@ -1,0 +1,5 @@
+# Dependency refresh engine. Set DEPS_LANGS and the DEPS_* directories in the repository's mise.toml [env].
+
+[deps]
+description = "Update or upgrade one ecosystem's dependencies, or every ecosystem in DEPS_LANGS"
+file = "mise-tasks/.shared/deps-refresh/refresh.sh"

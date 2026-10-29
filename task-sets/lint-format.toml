@@ -1,0 +1,14 @@
+# Repository-wide lint and format through poly.
+
+[lint]
+description = "Run all linters via poly"
+alias = "lint:check"
+run = "poly lint ."
+
+[format]
+description = "Format all code via poly"
+run = "poly fmt --fix ."
+
+["format:check"]
+description = "Check code formatting without modifications"
+run = "poly fmt --check ."
