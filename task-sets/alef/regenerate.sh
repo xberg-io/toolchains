@@ -6,9 +6,8 @@ set -euo pipefail
 # version -- README install snippets, test-app installers, e2e download scripts, stubs,
 # scaffolding -- is produced by separate subcommands, so a bump that stops at
 # sync-versions leaves generated files contradicting the manifests beside them.
-# liter-llm v1.19.0 and tree-sitter-language-pack v1.16.0 were both tagged in exactly
-# that state and reached no registry. Each command below writes a different part of that
-# surface; none is redundant with another.
+# Two releases have been tagged in exactly that state and reached no registry. Each
+# command below writes a different part of that surface; none is redundant with another.
 #
 # `alef docs` is deliberately NOT here. It aborts on doc-snippet typechecking, and when
 # it aborts it has already written the reference pages WITHOUT their `alef:hash:` lines,

@@ -1,4 +1,6 @@
 # ai-rulez plugin bundles, public skills and the MCP launcher.
+# Runs repository scripts: scripts/sync_public_skills.py and scripts/tests/{test_public_skills.py,
+# test_mcp_launcher_cwd.py,test_hermes_plugin.py,opencode-plugin.test.mjs}.
 
 ["plugin:generate"]
 description = "Regenerate the plugin bundles + marketplace from plugin/.ai-rulez"

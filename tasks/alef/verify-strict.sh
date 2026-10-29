@@ -13,9 +13,9 @@ alef verify 2>&1 | tee "$verify_log"
 # create-once seed: upstream reasons that a consumer cannot fix content the write
 # guard refuses to overwrite, so failing there would only buy a blanket
 # `user_owned` opt-out. We own these files, so here it IS fixable and IS fatal --
-# a drifted version-bearing installer is exactly how liter-llm shipped a 1.4.0-rc
-# artifact URL for three releases. `alef verify --help` names this grep as the
-# supported way to make it fatal.
+# a drifted version-bearing installer is exactly how one repository shipped a
+# release-candidate artifact URL for three releases. `alef verify --help` names this
+# grep as the supported way to make it fatal.
 if grep -q 'frozen path(s) DRIFTED' "$verify_log"; then
   echo "ERROR: alef verify reported drifted frozen paths (see the DRIFTED block above)." >&2
   echo "       Fix the file, or declare it [workspace.ownership] user_owned in alef.toml once reviewed." >&2
