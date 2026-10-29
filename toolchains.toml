@@ -1,1 +1,2 @@
 baseline = "v1.5.0"
+task_sets = ["lint-format"]

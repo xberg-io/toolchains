@@ -7,3 +7,6 @@ node = "26.12.1"
 python = "3.13.18"
 "github:Goldziher/poly" = "0.31.2"
 actionlint = "1.7.12"
+
+[task_config]
+includes = ["mise-tasks", "mise-tasks/shared.toml"]
