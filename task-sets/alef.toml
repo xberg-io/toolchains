@@ -2,6 +2,7 @@
 
 ["alef:regenerate"]
 description = "Regenerate every alef output that carries the version"
+hide = true
 file = "mise-tasks/.shared/alef/regenerate.sh"
 
 ["alef:snippets"]
@@ -14,6 +15,7 @@ run = "alef verify --exit-code"
 
 ["alef:verify:strict"]
 description = "Run alef verify and fail on drifted frozen paths too"
+hide = true
 file = "mise-tasks/.shared/alef/verify-strict.sh"
 
 ["e2e:generate"]

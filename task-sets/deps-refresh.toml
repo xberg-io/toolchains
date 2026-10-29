@@ -2,4 +2,5 @@
 
 [deps]
 description = "Update or upgrade one ecosystem's dependencies, or every ecosystem in DEPS_LANGS"
+hide = true
 file = "mise-tasks/.shared/deps-refresh/refresh.sh"

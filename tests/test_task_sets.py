@@ -753,6 +753,16 @@ class MiseValidatesTaskSetsTest(unittest.TestCase):
                     result.stdout + result.stderr,
                 )
 
+    def test_helper_tasks_stay_hidden(self) -> None:
+        # Every repository that defined these before the sets existed hid them. ~keep
+        repo = self.scratch_repo("alef", "alef", "alef-pin", "deps-refresh")
+
+        result = self.mise(repo, "tasks", "ls", "--hidden", "--json")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        hidden = {task["name"] for task in json.loads(result.stdout) if task["hide"]}
+        self.assertEqual(hidden, {"alef:pin:check", "alef:regenerate", "alef:verify:strict", "deps"})
+
     def test_local_tasks_are_the_tasks_mise_loads(self) -> None:
         cases = {
             '[task_config]\nincludes = ["mise-tasks", "mise-tasks/shared.toml"]\n': ["mise-tasks"],
