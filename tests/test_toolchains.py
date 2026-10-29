@@ -273,7 +273,8 @@ class RealBaselineTest(unittest.TestCase):
 
         versions = {name: toolchains.version_of(value, name) for name, value in tools.items()}
 
-        self.assertEqual(versions["task"], "3.54.0")
+        self.assertRegex(versions["github:nextest-rs/nextest"], r"^\d+\.\d+\.\d+$")
+        self.assertNotIn("task", versions)
         self.assertTrue(all(versions.values()))
 
     def test_renovate_preset_disables_exactly_the_baseline_tools(self) -> None:

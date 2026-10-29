@@ -37,7 +37,6 @@
         "ruby",
         "rust",
         "sccache",
-        "task",
         "uv",
         "yq",
         "zig"

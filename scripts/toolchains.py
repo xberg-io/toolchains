@@ -118,7 +118,7 @@ def load_baseline(baseline_path: Path) -> dict[str, Pin]:
 
 
 def short_name(name: str) -> str:
-    """`aqua:go-task/task` -> `task`, `github:Goldziher/poly` -> `poly`, `nodejs` -> `node`."""
+    """`aqua:mikefarah/yq` -> `yq`, `github:Goldziher/poly` -> `poly`, `nodejs` -> `node`."""
     bare = name.split(":", 1)[-1].rsplit("/", 1)[-1]
     return ALIASES.get(bare, bare)
 
