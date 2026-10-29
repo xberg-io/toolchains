@@ -1,5 +1,6 @@
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -142,6 +143,67 @@ class CheckTest(unittest.TestCase):
 
         self.assertEqual(code, 1)
         self.assertIn("options {} differ from the baseline's {'version_prefix': 'cargo-nextest-'}", err)
+
+    def test_root_taskfile_on_disk_fails(self) -> None:
+        self.write("mise.toml", '[tools]\nnode = "24.22.1"\n')
+        for name in ("Taskfile.yml", "taskfile.yaml", "Taskfile.dist.yml", "TASKFILE.DIST.YAML"):
+            with self.subTest(name=name):
+                self.write(name, "version: '3'\n")
+
+                code, _, err = self.run_main()
+
+                (self.repo / name).unlink()
+                self.assertEqual(code, 1)
+                self.assertIn(f"drift: {name}: go-task leftover", err)
+
+    def test_root_task_directory_on_disk_fails(self) -> None:
+        self.write("mise.toml", '[tools]\nnode = "24.22.1"\n')
+        (self.repo / ".task").mkdir()
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn("drift: .task/: go-task leftover", err)
+
+    def test_names_go_task_does_not_read_pass(self) -> None:
+        self.write("mise.toml", '[tools]\nnode = "24.22.1"\n')
+        self.write("Taskfile.yml.bak", "")
+        (self.repo / "docs").mkdir()
+        self.write("docs/Taskfile.yml", "")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+
+    def git(self, *args: str) -> None:
+        subprocess.run(["git", "-C", str(self.repo), *args], check=True, capture_output=True)
+
+    def test_git_checkout_ignores_untracked_go_task_files(self) -> None:
+        self.git("init", "-q")
+        self.write("mise.toml", '[tools]\nnode = "24.22.1"\n')
+        self.write("Taskfile.yml", "")
+        (self.repo / ".task").mkdir()
+        self.write(".task/checksum", "")
+        self.git("add", "mise.toml")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+
+    def test_git_checkout_fails_on_tracked_go_task_files(self) -> None:
+        self.git("init", "-q")
+        self.write("mise.toml", '[tools]\nnode = "24.22.1"\n')
+        self.write("Taskfile.yml", "")
+        (self.repo / ".task").mkdir()
+        self.write(".task/checksum", "")
+        self.git("add", "mise.toml", "Taskfile.yml", ".task/checksum")
+        (self.repo / "Taskfile.yml").unlink()
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn("drift: .task/: go-task leftover", err)
+        self.assertIn("drift: Taskfile.yml: go-task leftover", err)
 
 
 class SyncTest(unittest.TestCase):

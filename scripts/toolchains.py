@@ -3,7 +3,8 @@
 
 `check` reads <repo>/mise.toml, <repo>/rust-toolchain.toml and <repo>/toolchains.toml. Every tool the repository
 declares that the baseline also lists must use the baseline version, unless toolchains.toml records an
-override with a reason. Exits 0 when consistent, 1 on drift, 2 on unusable input.
+override with a reason. It also fails when the repository root holds a go-task Taskfile or `.task/` directory,
+since mise runs the org's tasks. Exits 0 when consistent, 1 on drift, 2 on unusable input.
 
 `sync` rewrites those pins to the baseline versions in place, skipping overridden tools, and records the
 baseline ref in toolchains.toml. It edits matching lines only, so comments and layout survive.
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -22,6 +24,9 @@ RUST = "rust"
 # Registry aliases mise accepts for a baseline tool under another name.
 ALIASES = {"nodejs": "node", "golang": "go", "tofu": "opentofu"}
 QUOTED = r"""(?:"[^"]*"|'[^']*')"""
+# Every root file name go-task v3 reads, in any letter case (macOS and Windows match case-insensitively).
+TASKFILE = re.compile(r"taskfile(?:\.dist)?\.ya?ml", re.IGNORECASE)
+TASK_DIR = ".task"
 
 
 @dataclass
@@ -132,6 +137,35 @@ def baseline_key_for(name: str, baseline: dict[str, Pin]) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout
+
+
+def root_entries(repo: Path) -> list[str]:
+    """Names at the repository root, a directory as `name/`: the tracked ones in a git checkout, else on disk."""
+    try:
+        is_checkout = Path(git(repo, "rev-parse", "--show-toplevel").strip()).resolve() == repo.resolve()
+    except (OSError, subprocess.CalledProcessError):
+        is_checkout = False
+    if not is_checkout:
+        return sorted(f"{entry.name}/" if entry.is_dir() else entry.name for entry in repo.iterdir())
+    names = set()
+    for path in git(repo, "ls-files", "-z").split("\0"):
+        if path:
+            head, slash, _ = path.partition("/")
+            names.add(f"{head}{slash}")
+    return sorted(names)
+
+
+def go_task_leftovers(repo: Path) -> list[str]:
+    """Root Taskfiles and `.task/` the repository still carries."""
+    return [
+        name
+        for name in root_entries(repo)
+        if name == f"{TASK_DIR}/" or (not name.endswith("/") and TASKFILE.fullmatch(name))
+    ]
+
+
 def check(baseline_path: Path, repo: Path) -> Report:
     baseline = load_baseline(baseline_path)
     pins = repo_pins(repo)
@@ -168,6 +202,10 @@ def check(baseline_path: Path, repo: Path) -> Report:
         report.errors.append(f"{name}: override in toolchains.toml for a tool the repository does not pin")
     for name in sorted((set(overrides) & set(pins)) - set(baseline)):
         report.errors.append(f"{name}: override in toolchains.toml for a tool outside the baseline")
+    report.errors += [
+        f"{name}: go-task leftover; tasks run with mise now, so port it to mise.toml or mise-tasks/ and delete it"
+        for name in go_task_leftovers(repo)
+    ]
     return report
 
 

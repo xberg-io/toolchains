@@ -50,7 +50,10 @@ python3 /tmp/toolchains/scripts/toolchains.py check --baseline /tmp/toolchains/b
 ```
 
 `check` exits 1 on drift and 2 when nothing could be checked: a missing `mise.toml`, or no declared tool covered by
-the baseline. It lists the repository-owned tools it skipped. `sync` writes nothing when any pin cannot be rewritten
+the baseline. It lists the repository-owned tools it skipped. It also exits 1 when the repository root still holds
+go-task files, since the org runs its tasks with mise: a `Taskfile.yml`, `Taskfile.yaml`, `Taskfile.dist.yml` or
+`Taskfile.dist.yaml` in any letter case, or a `.task/` directory. In a git checkout only tracked files count, so an
+ignored `.task/` cache passes; elsewhere the files on disk are checked. `sync` writes nothing when any pin cannot be rewritten
 (for example a `[tools.node]` subtable) or when table options differ from the baseline; fix those by hand.
 
 ## Shared tasks
