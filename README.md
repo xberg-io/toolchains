@@ -64,10 +64,10 @@ repositories pick it up on the next baseline move. A repository opts in from `to
 
 ```toml
 baseline = "v1.6.0"
-task_sets = ["governance", "lint-format", "rust"]
+task_sets = ["governance", "governance-check", "lint-format"]
 
 [task_overrides]
-"rust:format:check" = "also checks the e2e crate, which is outside the workspace"
+lint = "runs tflint over terraform/, not poly"
 ```
 
 `sync` (same command as in [Moving to a new baseline](#moving-to-a-new-baseline)) then writes, all generated and
@@ -98,36 +98,58 @@ Repository specifics come from the environment with a default, never a repositor
 
 | Set | Tasks | Notes |
 |---|---|---|
-| `governance` | `governance:check`, `governance:generate`, `governance:hooks:install` | needs `ai-rulez` |
+| `governance` | `governance:hooks:install` | `poly` hooks for AI governance |
+| `governance-check` | `governance:check` | needs `ai-rulez` |
 | `lint-format` | `lint` (alias `lint:check`), `format`, `format:check` | repository-wide `poly` |
-| `docs-site` | `docs:build`, `docs:build:strict`, `docs:serve`, `docs:lint:prose` | `DOCS_DIR` |
-| `docs-snippets` | `docs:snippets:list`, `docs:snippets:list:lang`, `docs:snippets:audit`, `docs:snippets:gaps` | alef snippets; `DOCS_DIR` |
-| `rust` | `rust:format`, `rust:format:check`, `rust:clean`, `rust:licenses` | Cargo workspace |
-| `alef` | `alef:build`, `alef:docs`, `alef:format`, `alef:pin:check`, `alef:regenerate`, `alef:snippets`, `alef:verify`, `alef:verify:strict`, `e2e:generate`, `readme:generate`, `test:bindings`, `publish:{build,package,prepare,validate}` | alef-managed bindings |
-| `alef-version` | `version:show`, `version:bump:{major,minor,patch}`, `version:set`, `alef:sync` (alias `versions:sync`) | the repository defines `version:sync` |
-| `plugin` | `plugin:generate`, `plugin:verify`, `plugin:skills:test`, `plugin:launcher:test`, `plugin:hermes:test`, `plugin:test` | ai-rulez plugin and public skills scripts |
+| `docs-site` | `docs:build`, `docs:serve` | `DOCS_DIR` |
+| `docs-snippets` | `docs:snippets:audit`, `docs:snippets:gaps` | alef snippets; `DOCS_DIR` |
+| `rust` | `rust:format`, `rust:clean` | Cargo workspace |
+| `alef` | `alef:regenerate`, `alef:verify`, `alef:verify:strict`, `alef:snippets`, `e2e:generate` | alef-generated outputs |
+| `alef-bindings` | `alef:build`, `test:bindings` | alef language bindings |
+| `alef-publish` | `publish:{build,package,prepare,validate}` | alef release packaging |
+| `alef-pin` | `alef:pin:check` | the `alef_version` pin in `alef.toml` |
+| `alef-version` | `version:show`, `version:bump:{major,minor,patch}` | the repository defines `version:sync` |
+| `plugin` | `plugin:generate`, `plugin:verify`, `plugin:skills:test` | ai-rulez plugin and public skills scripts |
+| `plugin-runtime` | `plugin:launcher:test`, `plugin:hermes:test`, `plugin:test` | MCP launcher, Hermes bridge and OpenCode test scripts |
 | `deps-refresh` | `deps` (`deps <update\|upgrade> [lang]`) | `DEPS_LANGS`, `DEPS_<LANG>_DIR`, `DEPS_NODE_DIRS`, `DEPS_RUST_MANIFESTS` in `[env]` |
 
 ### Why these members
 
 A task joins a set when its body is identical in at least two repositories and in at least half of the repositories
-that define the name, so overrides stay the exception. Counts are repositories with that exact body / repositories
-defining the name, from every repository's default branch in October 2026 (remote file tasks count by source file).
+that define the name, so overrides stay the exception. A set also gives no repository a task it does not define: a
+member only some of a set's repositories define moves to a set of its own, or stays local when that set would ship
+no file task and replace fewer than six local definitions. Counts are repositories with that exact body /
+repositories defining the name, from every repository's default branch on 2026-10-29, after each repository removed
+the tasks it does not use (remote file tasks count by source file).
 
 | Set | Members (identical / defining) |
 |---|---|
-| `governance` | `governance:check` 16/17, `governance:hooks:install` 17/17; `governance:generate`: `ai-rulez generate` in 4 repositories under 4 names, one canonical name now |
-| `lint-format` | `format` 10/13, `format:check` 8/8, `lint` 8/14; `lint:check` stays an alias because five repositories' own `check` task calls it |
-| `docs-site` | `docs:build` 7/8, `docs:serve` 7/8, `docs:build:strict` 5/5, `docs:lint:prose` 4/8 |
-| `docs-snippets` | `docs:snippets:list` 5/5, `docs:snippets:list:lang` 4/4, `docs:snippets:audit` 4/5, `docs:snippets:gaps` 4/5; apart from `docs-site` because the docs-only repositories have no alef |
-| `rust` | `rust:format` 6/6, `rust:format:check` 5/6, `rust:clean` 5/5, `rust:licenses` 2/2 |
-| `alef` | `alef:build` 4/4, `alef:regenerate` 4/4, `alef:verify:strict` 4/4, `test:bindings` 4/4, `publish:*` 4/4 each, `alef:verify` 4/5, `alef:docs` 3/4, `alef:snippets` 3/4, `readme:generate` 3/3, `e2e:generate` 3/5, `alef:format` 2/2, `alef:pin:check` 2/2 |
-| `alef-version` | `version:show` 5/6, `version:bump:*` 4/6 each, `alef:sync` 3/4, `version:set` 2/3 among alef repositories; `versions:sync` stays an alias because documentation calls it |
-| `plugin` | `plugin:generate` 6/6, `plugin:verify` 6/6, `plugin:skills:test` 6/6, `plugin:launcher:test` 5/5, `plugin:hermes:test` 4/6, `plugin:test` 3/5 |
+| `governance` | `governance:hooks:install` 17/17 |
+| `governance-check` | `governance:check` 15/16; apart from `governance` because one repository removed it and still installs the hooks |
+| `lint-format` | `format` 10/13, `format:check` 8/8, `lint` 8/14; `lint:check` stays an alias because three repositories' own `check` task calls it |
+| `docs-site` | `docs:build` 7/8, `docs:serve` 7/8 |
+| `docs-snippets` | `docs:snippets:audit` 3/4, `docs:snippets:gaps` 3/4; apart from `docs-site` because the docs-only repositories have no alef |
+| `rust` | `rust:format` 5/5, `rust:clean` 5/5 |
+| `alef` | `alef:regenerate` 4/4, `alef:verify:strict` 4/4, `alef:verify` 4/5, `alef:snippets` 3/4, `e2e:generate` 3/5 |
+| `alef-bindings` | `alef:build` 4/4, `test:bindings` 4/4; apart from `alef` because one alef repository defines neither |
+| `alef-publish` | `publish:*` 3/3 each; apart from `alef` because two alef repositories define none of them |
+| `alef-pin` | `alef:pin:check` 2/2, a file task |
+| `alef-version` | `version:show` 5/5, `version:bump:*` 4/5 each |
+| `plugin` | `plugin:generate` 6/6, `plugin:verify` 6/6, `plugin:skills:test` 6/6 |
+| `plugin-runtime` | `plugin:launcher:test` 3/3, `plugin:hermes:test` 3/3, `plugin:test` 2/4; apart from `plugin` because three plugin repositories do not define the first two |
 | `deps-refresh` | `deps` 5/5, already one shared file |
 
+Removed on 2026-10-29: `governance:generate` (1/2), `docs:lint:prose` (2/5), `rust:licenses` and the `versions:sync`
+alias (no repository defines them). Left local although they meet the count, because a set would give them to
+repositories that do not define them and a set of their own would replace fewer than six definitions:
+`docs:build:strict` (2/2), `docs:snippets:list` (3/3), `docs:snippets:list:lang` (2/2), `alef:docs` (2/2),
+`readme:generate` (2/2), `alef:format` (2/2), `alef:sync` (2/3), `version:set` (2/4), `rust:format:check` (3/4).
+
 Left out because the bodies diverge per repository: `rust:build`, `rust:test`, `rust:doc`, `rust:lint`,
-`docs:lint:links`, `docs:snippets:validate`, `docs:snippets:all`, `alef:generate`, `version:sync`, `setup`.
+`docs:lint:links`, `docs:snippets:validate`, `docs:snippets:all`, `alef:generate`, `version:sync`, `setup`. Also
+left out: `default` (`mise tasks ls` in 9/9, nothing to maintain), `build` (5/10, a wrapper for the repository's own
+`rust:build`) and the per-language `elixir:*`, `go:*` and `ruby:*` tasks (two or three repositories, each tied to
+its package layout).
 
 ## Shared tasks (deprecated)
 

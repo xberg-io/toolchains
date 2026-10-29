@@ -1,0 +1,15 @@
+# Tests for the plugin's runtime pieces: the MCP launcher, the Hermes bridge and the OpenCode tools.
+# Runs repository scripts: scripts/tests/{test_mcp_launcher_cwd.py,test_hermes_plugin.py,
+# opencode-plugin.test.mjs}.
+
+["plugin:launcher:test"]
+description = "Verify npm launcher preserves caller directory and relative configuration"
+run = "python3 scripts/tests/test_mcp_launcher_cwd.py"
+
+["plugin:hermes:test"]
+description = "Verify the Hermes bridge against a real MCP stdio fixture"
+run = "uv run --no-project --python 3.11 --with mcp==1.28.1 --with PyYAML==6.0.3 python scripts/tests/test_hermes_plugin.py"
+
+["plugin:test"]
+description = "Verify OpenCode tools and bundled resources"
+run = "node --test scripts/tests/opencode-plugin.test.mjs"

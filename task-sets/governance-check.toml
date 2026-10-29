@@ -1,0 +1,5 @@
+# AI governance: the ai-rulez output check.
+
+["governance:check"]
+description = "Check materialized local governance outputs against shared sources"
+run = "ai-rulez generate --check --no-local --strict-config"

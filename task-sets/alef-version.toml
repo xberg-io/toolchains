@@ -16,13 +16,3 @@ run = ["alef sync-versions --bump minor", { task = "version:sync" }]
 ["version:bump:patch"]
 description = "Bump patch version (0.0.X) and sync"
 run = ["alef sync-versions --bump patch", { task = "version:sync" }]
-
-["version:set"]
-description = "Set the version explicitly and sync"
-usage = 'arg "<version>" help="Version to set, e.g. 1.2.0-rc.1"'
-run = ['alef sync-versions --set "$usage_version"', { task = "version:sync" }]
-
-["alef:sync"]
-description = "Sync the version to all manifests"
-alias = "versions:sync"
-run = [{ task = "version:sync" }]

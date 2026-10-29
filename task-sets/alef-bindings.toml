@@ -1,0 +1,9 @@
+# alef language bindings: build and test.
+
+["alef:build"]
+description = "Build all language bindings"
+run = "alef build"
+
+["test:bindings"]
+description = "Run binding test suites only"
+run = "alef test"

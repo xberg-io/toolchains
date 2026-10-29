@@ -1,12 +1,4 @@
-# AI governance: ai-rulez outputs and the reviewed poly hooks.
-
-["governance:check"]
-description = "Check materialized local governance outputs against shared sources"
-run = "ai-rulez generate --check --no-local --strict-config"
-
-["governance:generate"]
-description = "Regenerate local AI governance files with ai-rulez"
-run = "ai-rulez generate"
+# AI governance: the reviewed poly hooks.
 
 ["governance:hooks:install"]
 description = "Provision machine preferences and install reviewed AI governance hooks"

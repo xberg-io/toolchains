@@ -1,0 +1,17 @@
+# alef release packaging.
+
+["publish:build"]
+description = "Build release artifacts for all languages"
+run = "alef publish build"
+
+["publish:package"]
+description = "Package built artifacts into distributable archives"
+run = "alef publish package -o dist/"
+
+["publish:prepare"]
+description = "Prepare packages for publishing (vendor deps, stage FFI)"
+run = "alef publish prepare"
+
+["publish:validate"]
+description = "Validate publish manifests are consistent"
+run = "alef publish validate"

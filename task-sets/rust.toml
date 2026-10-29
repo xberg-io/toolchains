@@ -4,14 +4,6 @@
 description = "Format Rust code (with modifications)"
 run = "cargo fmt --all"
 
-["rust:format:check"]
-description = "Check Rust code formatting without modifications"
-run = "cargo fmt --all -- --check"
-
 ["rust:clean"]
 description = "Clean Rust build artifacts"
 run = "cargo clean"
-
-["rust:licenses"]
-description = "Check Rust dependency licenses with cargo-deny"
-run = "cargo deny check licenses"

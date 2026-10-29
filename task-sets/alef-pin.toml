@@ -1,0 +1,5 @@
+# The alef release pin check.
+
+["alef:pin:check"]
+description = "Fail unless the alef on PATH is the clean release alef.toml pins"
+file = "mise-tasks/.shared/alef-pin/pin-check.sh"

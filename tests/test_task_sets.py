@@ -665,7 +665,7 @@ class RealTaskSetsTest(unittest.TestCase):
     def test_set_file_tasks_match_the_deprecated_remote_tasks(self) -> None:
         pairs = {
             "governance/hooks-install.sh": "governance/hooks-install.sh",
-            "alef/pin-check.sh": "alef/pin-check.sh",
+            "alef-pin/pin-check.sh": "alef/pin-check.sh",
             "alef/regenerate.sh": "alef/regenerate.sh",
             "alef/verify-strict.sh": "alef/verify-strict.sh",
             "alef-version/show.sh": "version/cargo.sh",
@@ -808,14 +808,14 @@ class MiseValidatesTaskSetsTest(unittest.TestCase):
         for args, env in (
             (["run", "lint:check"], {}),
             (["run", "format:check"], {}),
-            (["run", "docs:lint:prose"], {"DOCS_DIR": "site"}),
+            (["run", "docs:build"], {"DOCS_DIR": "site"}),
         ):
             result = self.mise(repo, *args, **env)
             self.assertEqual(result.returncode, 0, result.stderr)
 
         self.assertEqual(
             self.calls.read_text().splitlines(),
-            ["poly lint .", "poly fmt --check .", "pnpm exec textlint site/src/content/docs/**/*.{md,mdx}"],
+            ["poly lint .", "poly fmt --check .", "pnpm --dir site install --frozen-lockfile", "pnpm --dir site build"],
         )
 
     def test_shared_file_task_runs_with_usage_args(self) -> None:
