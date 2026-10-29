@@ -80,15 +80,18 @@ committed:
   is missing. `includes` replaces mise's default scan, so sync also keeps any default task directory
   (`.mise-tasks`, `.mise/tasks`, …) the repository has.
 
-Dropping a set deletes the files sync wrote for it, as listed in the manifest. Do not edit the generated files: change
-the set here and tag a release.
+Dropping a set deletes the files sync wrote for it, as listed in the manifest; dropping the last one also takes
+`"mise-tasks/shared.toml"` out of `includes`. Sync writes and deletes only regular files under those two paths, never
+through a symlink, and stops without writing when the manifest names anything else or a shipped path already holds a
+file sync did not write. Do not edit the generated files: change the set here and tag a release.
 
 A task listed under `task_overrides` is left out of `shared.toml` (with its aliases) and stays the repository's own,
 for a body that must differ. Every other task a selected set provides must not be defined locally: `check` exits 1
-when `mise.toml`, an included or `mise-tasks/*.toml` file, or an executable file task defines one of those names or
-aliases. It also exits 1 on an unknown set, an override without a reason or for a task no selected set provides, a
-missing include, and any generated file that differs from what `sync` would write, including one sync did not write
-under `mise-tasks/.shared/`.
+when `mise.toml` `[tasks]`, a TOML file mise loads (an `includes` file, or any `*.toml` under an included directory),
+or an executable file task defines one of those names or aliases. It also exits 1 on an unknown set; an override
+without a reason, for a task no selected set provides, or for a task the repository does not define; a missing
+include; and any generated file that differs from what `sync` would write, including its exec bit. In a repository
+that selects a set or has a manifest, every file under `mise-tasks/.shared/` must be one sync wrote.
 
 Repository specifics come from the environment with a default, never a repository name: set `DOCS_DIR` (default
 `docs-site`) or the `deps-refresh` variables in `mise.toml`'s `[env]`.

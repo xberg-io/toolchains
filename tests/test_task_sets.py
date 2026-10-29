@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import shutil
@@ -60,6 +61,18 @@ class TaskSetTestCase(unittest.TestCase):
     def read(self, name: str) -> str:
         return (self.repo / name).read_text()
 
+    def write_bytes(self, name: str, content: str) -> None:
+        path = self.repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content.encode())
+
+    def read_bytes(self, name: str) -> str:
+        return (self.repo / name).read_bytes().decode()
+
+    def snapshot(self) -> dict[Path, tuple[bytes, int]]:
+        files = (path for path in self.repo.rglob("*") if path.is_file())
+        return {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in files}
+
     def select(self, *sets: str, extra: str = "") -> None:
         names = ", ".join(f'"{name}"' for name in sets)
         self.write("toolchains.toml", f'baseline = "v1.6.0"\ntask_sets = [{names}]\n{extra}')
@@ -108,12 +121,57 @@ class SyncTaskSetsTest(TaskSetTestCase):
     def test_second_sync_changes_nothing(self) -> None:
         self.select("alpha")
         self.synced()
-        before = {path: path.read_bytes() for path in self.repo.rglob("*") if path.is_file()}
+        for path in self.repo.rglob("*"):
+            os.utime(path, ns=(1, 1))
+        before = self.snapshot()
 
         out = self.synced()
 
         self.assertNotIn("shared task files", out)
-        self.assertEqual({path: path.read_bytes() for path in self.repo.rglob("*") if path.is_file()}, before)
+        self.assertEqual(self.snapshot(), before)
+
+    @unittest.skipIf(os.name == "nt", "no executable bit on Windows")
+    def test_group_write_bits_do_not_cause_rewrites(self) -> None:
+        self.select("alpha")
+        self.synced()
+        (self.repo / ALPHA_FILE).chmod(0o775)
+        (self.repo / SHARED_TOML).chmod(0o664)
+
+        out = self.synced()
+
+        self.assertNotIn("shared task files", out)
+        self.assertEqual((self.repo / ALPHA_FILE).stat().st_mode & 0o777, 0o775)
+        self.assert_check(0)
+
+    def test_hidden_and_backup_files_in_a_set_are_not_shipped(self) -> None:
+        for name in (".two.sh.swp", "two.sh~", "two.sh.orig", ".cache/x.sh"):
+            path = self.sets / "alpha" / name
+            path.parent.mkdir(exist_ok=True)
+            path.write_text("junk")
+        self.select("alpha")
+
+        self.synced()
+
+        shipped = sorted(p.name for p in (self.repo / "mise-tasks" / ".shared" / "alpha").rglob("*"))
+        self.assertEqual(shipped, ["two.sh"])
+        self.assertEqual(self.read(MANIFEST).splitlines()[1:], [ALPHA_FILE, SHARED_TOML])
+
+    def test_multiline_values_with_bracket_lines_stay_in_their_task(self) -> None:
+        (self.sets / "gamma.toml").write_text(
+            '["g:one"]\nrun = """\n[ -f x ] && echo x\n["g:fake"]\n"""\n\n'
+            '["g:two"]\nrun = [\n["echo"],\n]\ndepends = []\n'
+        )
+        self.select("gamma")
+
+        self.synced()
+
+        task_set = toolchains.load_task_set(self.sets, "gamma")
+        self.assertEqual([name for name, _ in task_set.chunks], ["g:one", "g:two"])
+        self.assertEqual(tomllib.loads(self.read(SHARED_TOML)), tomllib.loads((self.sets / "gamma.toml").read_text()))
+        self.assertEqual(
+            toolchains.parse_toml(toolchains.render_shared([task_set], {"g:one": "x"}, None), "x"),
+            {"g:two": {"run": [["echo"]], "depends": []}},
+        )
 
     def test_adds_only_the_missing_entry_to_existing_includes(self) -> None:
         cases = {
@@ -126,14 +184,43 @@ class SyncTaskSetsTest(TaskSetTestCase):
             "[task_config]\nincludes = []\n": '[task_config]\nincludes = ["mise-tasks", "mise-tasks/shared.toml"]\n',
             '[task_config]\ndir = "."\n': '[task_config]\nincludes = ["mise-tasks", "mise-tasks/shared.toml"]\ndir = "."\n',
         }
+        cases[""] = '[task_config]\nincludes = ["mise-tasks", "mise-tasks/shared.toml"]\n'
         self.select("beta")
         for task_config, expected in cases.items():
-            with self.subTest(task_config=task_config):
-                self.write("mise.toml", f"{task_config}\n{MISE}")
+            for newline in ("\n", "\r\n"):
+                with self.subTest(task_config=task_config, newline=newline):
+                    if task_config:
+                        original, want = f"{task_config}\n{MISE}", f"{expected}\n{MISE}"
+                    else:
+                        original, want = MISE, f"{MISE}\n{expected}"
+                    self.write_bytes("mise.toml", original.replace("\n", newline))
 
-                self.synced()
+                    self.synced()
+                    self.synced()
 
-                self.assertEqual(self.read("mise.toml"), f"{expected}\n{MISE}")
+                    self.assertEqual(self.read_bytes("mise.toml"), want.replace("\n", newline))
+                    self.assert_check(0)
+
+    def test_includes_that_is_not_a_list_is_a_clear_error(self) -> None:
+        self.select("beta")
+        self.write("mise.toml", f'[task_config]\nincludes = "mise-tasks"\n\n{MISE}')
+
+        code, _, err = self.main("sync")
+
+        self.assertEqual(code, 2)
+        self.assertIn("error: mise.toml: [task_config] includes must be a list of paths", err)
+        self.assertNotIn("Traceback", err)
+        self.assertFalse((self.repo / "mise-tasks").exists())
+
+    def test_invalid_mise_toml_is_an_input_error(self) -> None:
+        self.select("beta")
+        self.write("mise.toml", "[tools\n")
+
+        code, _, err = self.main("sync")
+
+        self.assertEqual(code, 2)
+        self.assertIn("error: ", err)
+        self.assertNotIn("Traceback", err)
 
     def test_keeps_default_task_directories_the_repository_uses(self) -> None:
         (self.repo / ".mise" / "tasks").mkdir(parents=True)
@@ -167,7 +254,91 @@ class SyncTaskSetsTest(TaskSetTestCase):
         self.synced()
 
         self.assertEqual(sorted(p.name for p in (self.repo / "mise-tasks").iterdir()), [])
+        self.assertEqual(self.read("mise.toml"), MISE + '\n[task_config]\nincludes = ["mise-tasks"]\n')
         self.assert_check(0)
+
+    def test_dropping_the_last_set_removes_only_the_shared_include(self) -> None:
+        cases = {
+            'includes = [\n  "mise-tasks/shared.toml",\n  "mise-tasks",\n]\n': 'includes = [\n  "mise-tasks",\n]\n',
+            'includes = ["mise-tasks/shared.toml", "mise-tasks"]\n': 'includes = ["mise-tasks"]\n',
+            # sync added "mise-tasks" next to it, and leaves that in place. ~keep
+            'includes = ["mise-tasks/shared.toml"]\n': 'includes = ["mise-tasks"]\n',
+        }
+        for includes, expected in cases.items():
+            with self.subTest(includes=includes):
+                self.write("mise.toml", f"[task_config]\n{includes}\n{MISE}")
+                self.select("beta")
+                self.synced()
+                self.write("toolchains.toml", 'baseline = "v1.6.0"\n')
+
+                self.synced()
+
+                self.assertEqual(self.read("mise.toml"), f"[task_config]\n{expected}\n{MISE}")
+
+    def test_unmanaged_shared_dir_without_sets_is_not_checked(self) -> None:
+        self.write("mise-tasks/.shared/notes.txt", "mine")
+
+        self.assert_check(0)
+
+    def test_overrides_are_checked_without_sets(self) -> None:
+        self.write("toolchains.toml", '[task_overrides]\n"a:one" = "x"\n')
+
+        self.assert_check(1, "a:one: task_overrides entry for a task no selected set provides")
+
+    def test_existing_unmanaged_file_at_a_shipped_path_is_not_overwritten(self) -> None:
+        self.write(ALPHA_FILE, "#!/bin/sh\necho mine\n")
+        self.select("alpha")
+
+        code, _, err = self.main("sync")
+
+        self.assertEqual(code, 2)
+        self.assertIn(f"{ALPHA_FILE}: exists and sync did not write it", err)
+        self.assertEqual(self.read(ALPHA_FILE), "#!/bin/sh\necho mine\n")
+        self.assertEqual(self.read("mise.toml"), MISE)
+
+    def test_unsafe_manifest_entries_stop_sync_and_delete_nothing(self) -> None:
+        cases = {
+            "mise.toml": "outside the paths task sets own",
+            "mise-tasks/build.sh": "outside the paths task sets own",
+            "./mise-tasks/shared.toml": "outside the paths task sets own",
+            "mise-tasks/.shared/./alpha/two.sh": "outside the paths task sets own",
+            "mise-tasks/.shared//x": "outside the paths task sets own",
+            "mise-tasks/.shared/../../mise.toml": "outside the paths task sets own",
+            "mise-tasks/.shared/link/x.sh": "mise-tasks/.shared/link is a symlink",
+        }
+        self.select("alpha")
+        self.synced()
+        self.write("mise-tasks/build.sh", "#!/bin/sh\n")
+        outside = self.root / "outside"
+        outside.mkdir()
+        (outside / "x.sh").write_text("keep")
+        (self.repo / "mise-tasks" / ".shared" / "link").symlink_to(outside, target_is_directory=True)
+        self.write("toolchains.toml", 'baseline = "v1.6.0"\n')
+        manifest = self.read(MANIFEST)
+        for entry, message in cases.items():
+            with self.subTest(entry=entry):
+                self.write(MANIFEST, f"{manifest}{entry}\n")
+                before = self.snapshot()
+
+                code, _, err = self.main("sync")
+
+                self.assertEqual(code, 2)
+                self.assertIn(message, err)
+                self.assertEqual(self.snapshot(), before)
+                self.assertEqual((outside / "x.sh").read_text(), "keep")
+
+    def test_symlinked_shared_directory_is_refused(self) -> None:
+        outside = self.root / "outside"
+        outside.mkdir()
+        (self.repo / "mise-tasks").mkdir()
+        (self.repo / "mise-tasks" / ".shared").symlink_to(outside, target_is_directory=True)
+        self.select("alpha")
+
+        code, _, err = self.main("sync")
+
+        self.assertEqual(code, 2)
+        self.assertIn("mise-tasks/.shared is a symlink", err)
+        self.assertEqual(list(outside.iterdir()), [])
 
     def test_files_sync_did_not_write_are_left_alone(self) -> None:
         self.select("alpha")
@@ -245,6 +416,33 @@ class CheckTaskSetsTest(TaskSetTestCase):
         (self.repo / ALPHA_FILE).chmod(0o644)
 
         self.assert_check(1, f"drift: {ALPHA_FILE}: not executable")
+
+    @unittest.skipIf(os.name == "nt", "no executable bit on Windows")
+    def test_executable_shared_toml_or_manifest_is_drift(self) -> None:
+        for name in (SHARED_TOML, MANIFEST):
+            with self.subTest(name=name):
+                (self.repo / name).chmod(0o755)
+
+                self.assert_check(1, f"drift: {name}: executable; run sync")
+
+                self.synced()
+                self.assertEqual((self.repo / name).stat().st_mode & 0o111, 0)
+                self.assert_check(0)
+
+    def test_stale_override_is_drift(self) -> None:
+        self.select("alpha", "beta", extra='[task_overrides]\n"a:one" = "was customised"\n')
+        self.synced()
+
+        self.assert_check(1, "a:one: task_overrides entry for a task this repository does not define")
+
+    def test_task_files_mise_does_not_include_are_not_local_tasks(self) -> None:
+        self.write("elsewhere/a.toml", '["a:one"]\nrun = "x"\n')
+        self.write("mise-tasks/sub/b.toml", '["b:one"]\nrun = "x"\n')
+        self.write("mise-tasks/.hidden/c.toml", '["a:one"]\nrun = "x"\n')
+
+        self.assert_check(1, "b:one: mise-tasks/sub/b.toml defines a task")
+        _, _, err = self.main("check")
+        self.assertNotIn("a:one", err)
 
     def test_set_change_upstream_is_drift(self) -> None:
         (self.sets / "beta.toml").write_text('["b:one"]\nrun = "echo b2"\n')
@@ -327,21 +525,22 @@ class RealTaskSetsTest(unittest.TestCase):
         sets, unknown = toolchains.resolve_sets(self.sets_dir, self.names)
 
         self.assertEqual(unknown, [])
-        self.assertEqual(
-            self.names,
-            (
-                "alef",
-                "alef-version",
-                "deps-refresh",
-                "docs-site",
-                "docs-snippets",
-                "governance",
-                "lint-format",
-                "plugin",
-                "rust",
-            ),
-        )
+        self.assertGreater(len(self.names), 0)
         self.assertTrue(all(task_set.tasks for task_set in sets))
+
+    def test_readme_documents_every_set_and_task(self) -> None:
+        readme = (ROOT / "README.md").read_text()
+        section = readme.split("## Task sets", 1)[1].split("### Why these members", 1)[0]
+        rows = dict(re.findall(r"^\| `([a-z0-9-]+)` \| (.*?) \|", section, re.MULTILINE))
+
+        self.assertEqual(sorted(rows), sorted(self.names))
+        for task_set in toolchains.resolve_sets(self.sets_dir, self.names)[0]:
+            for task in task_set.tasks:
+                head, _, tail = task.rpartition(":")
+                documented = f"`{task}`" in rows[task_set.name] or re.search(
+                    rf"`{re.escape(head)}:\{{[^}}]*\b{re.escape(tail)}\b", rows[task_set.name]
+                )
+                self.assertTrue(documented or task == "deps", f"README lacks {task} in {task_set.name}")
 
     def test_rendering_keeps_every_task_and_overrides_drop_exactly_one(self) -> None:
         for task_set in toolchains.resolve_sets(self.sets_dir, self.names)[0]:
@@ -353,7 +552,9 @@ class RealTaskSetsTest(unittest.TestCase):
                     self.assertEqual(sorted(dropped), sorted(set(task_set.tasks) - {task}))
 
     def test_no_set_task_hard_codes_a_repository_name(self) -> None:
-        text = "\n".join(path.read_text() for path in self.sets_dir.glob("*.toml"))
+        sources = sorted(path for path in self.sets_dir.rglob("*") if path.is_file())
+        self.assertTrue(any(path.suffix == ".sh" for path in sources))
+        text = "\n".join(path.read_text() for path in sources)
 
         for repository in ("xberg", "crawlberg", "liter-llm", "html-to-markdown", "tree-sitter", "sceptre"):
             match = re.search(rf"(?<![\w-]){re.escape(repository)}(?![\w-])", text)
@@ -382,7 +583,8 @@ def required_tasks(path: Path) -> list[str]:
     return re.findall(r"^# requires: (\S+)", path.read_text(), re.MULTILINE)
 
 
-@unittest.skipUnless(shutil.which("mise"), "mise is not on PATH")
+# CI installs mise, so a missing mise there fails the tests instead of skipping them. ~keep
+@unittest.skipUnless(shutil.which("mise") or os.environ.get("CI"), "mise is not on PATH")
 class MiseValidatesTaskSetsTest(unittest.TestCase):
     """Each set, synced alone into a scratch repository, passes `mise tasks validate` and runs."""
 
@@ -432,7 +634,7 @@ class MiseValidatesTaskSetsTest(unittest.TestCase):
 
     def test_every_set_validates(self) -> None:
         names = sorted(path.stem for path in (ROOT / "task-sets").glob("*.toml"))
-        self.assertEqual(len(names), 9)
+        self.assertGreater(len(names), 0)
         for name in names:
             with self.subTest(set=name):
                 repo = self.scratch_repo(name, name)
@@ -445,6 +647,47 @@ class MiseValidatesTaskSetsTest(unittest.TestCase):
                     f"All {len(tasks) + len(required_tasks(ROOT / 'task-sets' / f'{name}.toml'))} task(s)",
                     result.stdout + result.stderr,
                 )
+
+    def test_local_tasks_are_the_tasks_mise_loads(self) -> None:
+        cases = {
+            '[task_config]\nincludes = ["mise-tasks", "mise-tasks/shared.toml"]\n': ["mise-tasks"],
+            '[task_config]\nincludes = ["other", "lone.toml"]\n': ["other"],
+            "": [".mise/tasks"],
+        }
+        for task_config, used in cases.items():
+            with self.subTest(task_config=task_config):
+                repo = self.root / f"local-{len(used[0])}"
+                files = {
+                    "mise.toml": f'{task_config}[tasks.t0]\nrun = "true"\nalias = "t0a"\n',
+                    "lone.toml": '["lone"]\nrun = "true"\n',
+                    "mise-tasks/shared.toml": '["shared"]\nrun = "true"\n',
+                    "mise-tasks/top.toml": '["top"]\nrun = "true"\nalias = ["topa"]\n',
+                    "mise-tasks/sub/deep.toml": '["deep"]\nrun = "true"\n',
+                    "mise-tasks/.hidden/h.toml": '["hidden"]\nrun = "true"\n',
+                    "mise-tasks/grp/_default": "#!/bin/sh\n",
+                    "mise-tasks/grp/run.sh": "#!/bin/sh\n",
+                    "mise-tasks/plain.sh": "",
+                    "other/o.toml": '["o"]\nrun = "true"\n',
+                    ".mise/tasks/dot.sh": "#!/bin/sh\n",
+                }
+                for name, content in files.items():
+                    path = repo / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(content)
+                    if content.startswith("#!"):
+                        path.chmod(0o755)
+
+                result = self.mise(repo, "tasks", "ls", "--json")
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                loaded = {
+                    name
+                    for task in json.loads(result.stdout)
+                    for name in [task["name"], *task.get("aliases", [])]
+                    if name != "shared"
+                }
+                self.assertGreater(len(loaded), 2)
+                self.assertEqual(set(toolchains.local_tasks(repo)), loaded)
 
     def test_validate_catches_a_missing_required_task(self) -> None:
         repo = self.scratch_repo("alef-version", "alef-version")

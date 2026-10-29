@@ -45,6 +45,8 @@ REQUIRED_INCLUDES = ("mise-tasks", SHARED_TOML)
 # Directories mise scans for file tasks when [task_config] includes is absent; setting includes replaces them.
 MISE_DEFAULT_TASK_DIRS = ("mise-tasks", ".mise-tasks", ".mise/tasks", "mise/tasks", ".config/mise/tasks")
 EXECUTABLE = 0o755
+# Editor and patch leftovers in a set directory that sync must not ship.
+BACKUP_SUFFIXES = ("~", ".bak", ".orig", ".rej", ".swp")
 
 
 @dataclass
@@ -80,7 +82,15 @@ def read_raw(path: Path) -> str:
 
 
 def write_raw(path: Path, text: str) -> None:
-    write_atomic(path, text.encode("utf-8"))
+    # A symlinked mise.toml keeps its link: write the file it points to. ~keep
+    write_atomic(path.resolve() if path.is_symlink() else path, text.encode("utf-8"))
+
+
+def parse_toml(text: str, where: str) -> dict:
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise InputError(f"{where}: invalid TOML: {exc}") from exc
 
 
 def write_atomic(path: Path, content: bytes, mode: int | None = None) -> None:
@@ -233,14 +243,13 @@ def load_task_config(repo: Path) -> TaskConfig:
 def split_tasks(text: str, where: str) -> tuple[tuple[str, str], ...]:
     """Split a mise task file into (task name, text) chunks; comments directly above a header go with it."""
     chunks: list[tuple[str, list[str]]] = [("", [])]
-    for line in text.splitlines(keepends=True):
-        if not line.startswith("["):
+    lines = text.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if not line.startswith("[") or not parses("".join(lines[:index])):
+            # Not a header: a line of a multi-line string or array that starts with "[". ~keep
             chunks[-1][1].append(line)
             continue
-        try:
-            names = list(tomllib.loads(line))
-        except tomllib.TOMLDecodeError as exc:
-            raise InputError(f"{where}: cannot read the table header {line.strip()!r}: {exc}") from exc
+        names = list(parse_toml(line, f"{where}: table header {line.strip()!r}"))
         previous = chunks[-1][1]
         lead = len(previous)
         while lead and previous[lead - 1].lstrip().startswith("#"):
@@ -248,6 +257,20 @@ def split_tasks(text: str, where: str) -> tuple[tuple[str, str], ...]:
         chunks.append((names[0], [*previous[lead:], line]))
         del previous[lead:]
     return tuple((name, "".join(lines)) for name, lines in chunks if name or "".join(lines).strip())
+
+
+def parses(text: str) -> bool:
+    try:
+        tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return False
+    return True
+
+
+def shippable(relative: Path) -> bool:
+    """False for hidden files and editor or patch leftovers in a set directory."""
+    hidden = any(part.startswith(".") for part in relative.parts)
+    return not hidden and not relative.name.endswith(BACKUP_SUFFIXES)
 
 
 def aliases_of(task: object) -> list[str]:
@@ -268,7 +291,7 @@ def load_task_set(sets_dir: Path, name: str) -> TaskSet | None:
     files = {}
     root = sets_dir / name
     if root.is_dir():
-        for source in sorted(p for p in root.rglob("*") if p.is_file()):
+        for source in sorted(p for p in root.rglob("*") if p.is_file() and shippable(p.relative_to(root))):
             files[f"{SHARED_DIR}/{name}/{source.relative_to(root).as_posix()}"] = source.read_bytes()
     for task, entry in tasks.items():
         target = entry.get("file") if isinstance(entry, dict) else None
@@ -334,29 +357,49 @@ def expected_shared_files(sets: list[TaskSet], config: TaskConfig, ref: str | No
     return files
 
 
+def owned_target(repo: Path, relative: str) -> Path:
+    """repo/relative for a path sync may write or delete; InputError for any other path or one through a link."""
+    parts = relative.split("/")
+    inside = relative in (SHARED_TOML, MANIFEST) or relative.startswith(f"{SHARED_DIR}/")
+    if not inside or "\\" in relative or any(part in ("", ".", "..") for part in parts):
+        raise InputError(f"{relative}: outside the paths task sets own ({SHARED_TOML}, {SHARED_DIR}/)")
+    path = repo
+    for part in parts:
+        path = path / part
+        if path.is_symlink():
+            raise InputError(f"{relative}: {path.relative_to(repo).as_posix()} is a symlink; sync does not follow it")
+    root = (repo / "mise-tasks").resolve()
+    if not path.resolve().is_relative_to(root):
+        raise InputError(f"{relative}: resolves outside {root}")
+    return path
+
+
 def manifest_paths(repo: Path) -> list[str]:
-    """Paths the previous sync recorded, limited to the ones sync may own."""
-    path = repo / MANIFEST
+    """Paths the previous sync recorded, plus the manifest itself. InputError for an entry sync could not own."""
+    path = owned_target(repo, MANIFEST)
     if not path.is_file():
         return []
-    owned = []
-    for line in read_raw(path).splitlines():
-        entry = line.strip()
-        inside = entry == SHARED_TOML or entry.startswith(f"{SHARED_DIR}/")
-        if inside and ".." not in entry.split("/"):
-            owned.append(entry)
+    entries = [line.strip() for line in read_raw(path).splitlines()]
+    owned = [entry for entry in entries if entry and not entry.startswith("#")]
+    for entry in owned:
+        owned_target(repo, entry)
     return [*owned, MANIFEST]
 
 
 def mise_includes(data: dict) -> list[str] | None:
+    """[task_config] includes, or None when unset. InputError when it is not a list of strings."""
     config = data.get("task_config", {})
-    includes = config.get("includes") if isinstance(config, dict) else None
-    return includes if isinstance(includes, list) else None
+    if not isinstance(config, dict) or "includes" not in config:
+        return None
+    includes = config["includes"]
+    if not isinstance(includes, list) or not all(isinstance(entry, str) for entry in includes):
+        raise InputError("mise.toml: [task_config] includes must be a list of paths")
+    return includes
 
 
 def with_shared_includes(text: str, repo: Path) -> str:
     """mise.toml text whose [task_config] includes lists mise-tasks and the shared task file."""
-    data = tomllib.loads(text)
+    data = parse_toml(text, "mise.toml")
     includes = mise_includes(data)
     if includes is None:
         # Setting includes replaces mise's default scan; keep every default directory the repository uses. ~keep
@@ -368,7 +411,8 @@ def with_shared_includes(text: str, repo: Path) -> str:
         return text
     newline = "\r\n" if "\r\n" in text else "\n"
     entries = ", ".join(f'"{name}"' for name in missing)
-    header = re.search(r"^\[task_config\][ \t]*(?:#[^\r\n]*)?\r?$", text, re.MULTILINE)
+    # The lookahead keeps a CRLF line's \r after the match, so text inserted at its end lands before it. ~keep
+    header = re.search(r"^\[task_config\][ \t]*(?:#[^\r\n]*)?(?=\r?$)", text, re.MULTILINE)
     if "task_config" not in data:
         separator = "" if not text or text.endswith(newline) else newline
         new_text = f"{text}{separator}{newline}[task_config]{newline}includes = [{entries}]{newline}"
@@ -389,8 +433,24 @@ def with_shared_includes(text: str, repo: Path) -> str:
         else:
             insert = entries if rest.lstrip().startswith("]") else f"{entries}, "
         new_text = text[: array.end()] + insert + rest
-    if not set(REQUIRED_INCLUDES) <= set(mise_includes(tomllib.loads(new_text)) or []):
+    if not set(REQUIRED_INCLUDES) <= set(mise_includes(parse_toml(new_text, "mise.toml")) or []):
         raise InputError(f"mise.toml: add {entries} to [task_config] includes by hand")
+    return new_text
+
+
+def without_shared_include(text: str) -> str:
+    """mise.toml text with the shared task file dropped from [task_config] includes, once no set is selected."""
+    data = parse_toml(text, "mise.toml")
+    if SHARED_TOML not in (mise_includes(data) or []):
+        return text
+    entry = re.escape(f'"{SHARED_TOML}"')
+    # An entry on its own line, else one inside a single-line array with its separating comma. ~keep
+    new_text, count = re.subn(rf"^[ \t]*{entry}[ \t]*,?[ \t]*\r?\n", "", text, count=1, flags=re.MULTILINE)
+    if not count:
+        new_text, count = re.subn(rf"{entry}[ \t]*,[ \t]*|,?[ \t]*{entry}", "", text, count=1)
+    expected = {**data["task_config"], "includes": [e for e in data["task_config"]["includes"] if e != SHARED_TOML]}
+    if not count or parse_toml(new_text, "mise.toml").get("task_config") != expected:
+        raise InputError(f'mise.toml: remove "{SHARED_TOML}" from [task_config] includes by hand')
     return new_text
 
 
@@ -405,40 +465,47 @@ def table_tasks(tables: dict) -> list[str]:
     return [alias for name, task in tables.items() for alias in [name, *aliases_of(task)]]
 
 
-def file_tasks(directory: Path) -> dict[str, str]:
-    """Executable file tasks mise registers from a directory, outside hidden paths, by task name."""
-    found = {}
-    for path in sorted(directory.rglob("*")):
-        relative = path.relative_to(directory)
-        hidden = any(part.startswith(".") for part in relative.parts)
-        if not hidden and path.is_file() and os.access(path, os.X_OK):
-            found.setdefault(task_file_name(relative), relative.as_posix())
+def directory_tasks(repo: Path, directory: str) -> dict[str, str]:
+    """Tasks mise registers from an included directory, by name: the tables of every *.toml under it and every
+    other executable file, skipping hidden paths and the shared task file."""
+    found: dict[str, str] = {}
+    root = repo / directory
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        source = f"{directory.rstrip('/')}/{relative.as_posix()}"
+        if any(part.startswith(".") for part in relative.parts) or not path.is_file() or source == SHARED_TOML:
+            continue
+        if path.suffix == ".toml":
+            for name in table_tasks(load_toml(path)):
+                found.setdefault(name, source)
+        elif os.access(path, os.X_OK):
+            found.setdefault(task_file_name(relative), source)
     return found
 
 
 def local_tasks(repo: Path) -> dict[str, str]:
-    """Map each task name and alias the repository defines itself to where it is defined."""
+    """Map each task name and alias the repository defines itself to where it is defined, reading what mise
+    reads: mise.toml [tasks] and [task_config] includes, or mise's default task directories without it."""
     mise_path = repo / "mise.toml"
     data = load_toml(mise_path) if mise_path.is_file() else {}
     found = dict.fromkeys(table_tasks(data.get("tasks", {})), "mise.toml")
     includes = mise_includes(data)
-    entries = list(MISE_DEFAULT_TASK_DIRS if includes is None else includes)
-    entries += sorted(p.relative_to(repo).as_posix() for p in (repo / "mise-tasks").glob("*.toml"))
-    for entry in dict.fromkeys(name for name in entries if name != SHARED_TOML):
+    for entry in dict.fromkeys(MISE_DEFAULT_TASK_DIRS if includes is None else includes):
         path = repo / entry
-        if entry.endswith(".toml") and path.is_file():
+        if path.is_dir():
+            for name, source in directory_tasks(repo, entry).items():
+                found.setdefault(name, source)
+        elif path.is_file() and entry != SHARED_TOML:
             for name in table_tasks(load_toml(path)):
                 found.setdefault(name, entry)
-        elif path.is_dir():
-            for name, relative in file_tasks(path).items():
-                found.setdefault(name, f"{entry}/{relative}")
     return found
 
 
 def check_shared_files(repo: Path, expected: dict[str, tuple[bytes, int]], report: Report) -> None:
     on_disk = set(manifest_paths(repo))
     shared_dir = repo / SHARED_DIR
-    if shared_dir.is_dir():
+    # Only a repository that uses task sets (or did) owns the whole of mise-tasks/.shared/. ~keep
+    if shared_dir.is_dir() and (expected or on_disk):
         on_disk |= {p.relative_to(repo).as_posix() for p in shared_dir.rglob("*") if p.is_file()}
     for path in sorted(on_disk - set(expected)):
         if (repo / path).exists():
@@ -449,27 +516,43 @@ def check_shared_files(repo: Path, expected: dict[str, tuple[bytes, int]], repor
             report.errors.append(f"{path}: missing; run sync")
         elif target.read_bytes() != content:
             report.errors.append(f"{path}: differs from the task sets; run sync (edit the set in xberg-io/toolchains)")
-        elif mode == EXECUTABLE and os.name != "nt" and not os.access(target, os.X_OK):
-            report.errors.append(f"{path}: not executable; run sync")
+        elif os.name != "nt" and is_executable(target) != (mode == EXECUTABLE):
+            state = "not executable" if mode == EXECUTABLE else "executable"
+            report.errors.append(f"{path}: {state}; run sync")
 
 
-def check_task_names(repo: Path, sets: list[TaskSet], config: TaskConfig, report: Report) -> None:
-    mise_path = repo / "mise.toml"
-    includes = mise_includes(load_toml(mise_path)) if mise_path.is_file() else None
-    for name in REQUIRED_INCLUDES:
-        if name not in (includes or []):
-            report.errors.append(f'mise.toml: [task_config] includes lacks "{name}"; run sync')
+def is_executable(path: Path) -> bool:
+    return bool(path.stat().st_mode & 0o100)
 
+
+def check_overrides(sets: list[TaskSet], config: TaskConfig, local: dict[str, str], report: Report) -> None:
     provided = provided_tasks(sets, {})
     for name, reason in sorted(config.overrides.items()):
         if name not in provided:
             report.errors.append(f"{name}: task_overrides entry for a task no selected set provides")
         elif provided[name][1] != name:
             report.errors.append(f"{name}: task_overrides names an alias; override {provided[name][1]!r} instead")
-        elif not reason.strip():
+        elif name not in local:
+            report.errors.append(
+                f"{name}: task_overrides entry for a task this repository does not define; delete the entry to "
+                "take the shared task, or define the task"
+            )
+        if name in provided and not reason.strip():
             report.errors.append(f"{name}: task_overrides entry has no reason")
+
+
+def check_task_names(repo: Path, sets: list[TaskSet], config: TaskConfig, report: Report) -> None:
+    local = local_tasks(repo)
+    check_overrides(sets, config, local, report)
+    if not sets:
+        return
+    mise_path = repo / "mise.toml"
+    includes = mise_includes(load_toml(mise_path)) if mise_path.is_file() else None
+    for name in REQUIRED_INCLUDES:
+        if name not in (includes or []):
+            report.errors.append(f'mise.toml: [task_config] includes lacks "{name}"; run sync')
     active = provided_tasks(sets, config.overrides)
-    for name, source in sorted(local_tasks(repo).items()):
+    for name, source in sorted(local.items()):
         if name in active:
             set_name, task = active[name]
             alias = f" (alias of {task})" if task != name else ""
@@ -485,8 +568,7 @@ def check_task_sets(repo: Path, sets_dir: Path, report: Report) -> None:
     sets, unknown = resolve_sets(sets_dir, config.sets)
     report.errors += [f"task set {name!r}: no such set in {sets_dir}" for name in unknown]
     check_shared_files(repo, expected_shared_files(sets, config, config.ref), report)
-    if sets:
-        check_task_names(repo, sets, config, report)
+    check_task_names(repo, sets, config, report)
 
 
 def plan_task_sets(repo: Path, sets_dir: Path, ref: str | None, mise_text: str) -> tuple[dict, list[str], str]:
@@ -496,9 +578,17 @@ def plan_task_sets(repo: Path, sets_dir: Path, ref: str | None, mise_text: str) 
     if unknown:
         raise InputError(f"no such task set in {sets_dir}: {', '.join(unknown)}")
     expected = expected_shared_files(sets, config, ref or config.ref)
-    stale = [path for path in manifest_paths(repo) if path not in expected and (repo / path).is_file()]
-    if sets:
-        mise_text = with_shared_includes(mise_text, repo)
+    previous = manifest_paths(repo)
+    for path, (content, _) in expected.items():
+        target = owned_target(repo, path)
+        if path not in previous and target.exists() and (not target.is_file() or target.read_bytes() != content):
+            raise InputError(f"{path}: exists and sync did not write it; move it away, then run sync")
+    stale = []
+    for path in previous:
+        target = owned_target(repo, path)
+        if path not in expected and target.is_file():
+            stale.append(path)
+    mise_text = with_shared_includes(mise_text, repo) if sets else without_shared_include(mise_text)
     return expected, stale, mise_text
 
 
@@ -632,9 +722,12 @@ def sync(baseline_path: Path, repo: Path, ref: str | None, sets_dir: Path = SETS
         writes[toolchains_path] = with_baseline_ref(
             read_raw(toolchains_path) if toolchains_path.is_file() else None, ref
         )
+    # Shared files first: an interrupted sync then leaves mise.toml unchanged rather than including a missing file.
+    touched = write_shared(repo, shared, stale)
     for path, content in writes.items():
-        write_raw(path, content)
-    return sorted(changed), write_shared(repo, shared, stale)
+        if not path.is_file() or read_raw(path) != content:
+            write_raw(path, content)
+    return sorted(changed), touched
 
 
 def write_shared(repo: Path, shared: dict[str, tuple[bytes, int]], stale: list[str]) -> list[str]:
@@ -642,7 +735,8 @@ def write_shared(repo: Path, shared: dict[str, tuple[bytes, int]], stale: list[s
     touched = []
     for relative, (content, mode) in sorted(shared.items()):
         target = repo / relative
-        if not target.is_file() or target.read_bytes() != content or (target.stat().st_mode & 0o777) != mode:
+        # Compare only the exec bit: group bits follow the umask and must not make every sync rewrite. ~keep
+        if not target.is_file() or target.read_bytes() != content or is_executable(target) != (mode == EXECUTABLE):
             write_atomic(target, content, mode)
             touched.append(relative)
     for relative in stale:
