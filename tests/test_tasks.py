@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-TASKS = Path(__file__).resolve().parent.parent / "tasks"
+TASKS = Path(__file__).resolve().parent.parent / "task-sets"
 HOOKS_INSTALL = TASKS / "governance" / "hooks-install.sh"
 
 
@@ -104,22 +104,22 @@ class AlefPinCheckTest(StubbedTaskTest):
 
     def test_accepts_the_pinned_clean_release(self) -> None:
         self.stub("alef", 'echo "alef 0.115.5"')
-        self.assertEqual(self.run_task("alef/pin-check.sh").returncode, 0)
+        self.assertEqual(self.run_task("alef-pin/pin-check.sh").returncode, 0)
 
     def test_rejects_another_version(self) -> None:
         self.stub("alef", 'echo "alef 0.115.4"')
-        result = self.run_task("alef/pin-check.sh")
+        result = self.run_task("alef-pin/pin-check.sh")
         self.assertEqual(result.returncode, 1)
         self.assertIn("pins 0.115.5 but the alef on PATH is 0.115.4", result.stderr)
 
     def test_rejects_a_dirty_build(self) -> None:
         self.stub("alef", 'echo "alef 0.115.5"; echo "tree: abc DIRTY"')
-        self.assertEqual(self.run_task("alef/pin-check.sh").returncode, 1)
+        self.assertEqual(self.run_task("alef-pin/pin-check.sh").returncode, 1)
 
     def test_rejects_a_missing_pin(self) -> None:
         (self.root / "alef.toml").write_text("")
         self.stub("alef", 'echo "alef 0.115.5"')
-        self.assertIn("no alef_version pin", self.run_task("alef/pin-check.sh").stderr)
+        self.assertIn("no alef_version pin", self.run_task("alef-pin/pin-check.sh").stderr)
 
 
 class AlefTasksTest(StubbedTaskTest):
@@ -156,7 +156,7 @@ class CargoVersionTest(StubbedTaskTest):
         (self.root / "Cargo.toml").write_text(
             '[workspace.package]\nversion = "3.19.0"\n[dependencies]\nfoo = { version = "1.0" }\n'
         )
-        result = self.run_task("version/cargo.sh")
+        result = self.run_task("alef-version/show.sh")
         self.assertEqual(result.stdout, "3.19.0\n")
 
 
@@ -168,15 +168,17 @@ class DepsRefreshTest(StubbedTaskTest):
         (self.root / "packages" / "go").mkdir(parents=True)
 
     def test_rejects_an_unknown_mode(self) -> None:
-        self.assertEqual(self.run_task("deps/refresh.sh", usage_mode="sideways", usage_lang="all").returncode, 2)
+        self.assertEqual(
+            self.run_task("deps-refresh/refresh.sh", usage_mode="sideways", usage_lang="all").returncode, 2
+        )
 
     def test_upgrade_runs_incompatible_upgrades_before_the_update(self) -> None:
-        result = self.run_task("deps/refresh.sh", usage_mode="upgrade", usage_lang="rust")
+        result = self.run_task("deps-refresh/refresh.sh", usage_mode="upgrade", usage_lang="rust")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.called(), ["cargo upgrade --incompatible", "cargo update"])
 
     def test_all_follows_deps_langs_and_package_dirs(self) -> None:
-        result = self.run_task("deps/refresh.sh", usage_mode="update", usage_lang="all", DEPS_LANGS="rust go")
+        result = self.run_task("deps-refresh/refresh.sh", usage_mode="update", usage_lang="all", DEPS_LANGS="rust go")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.called(), ["cargo update", "go get -u=patch ./...", "go mod tidy"])
 
@@ -187,7 +189,7 @@ class DepsRefreshTest(StubbedTaskTest):
             '.dependencies = .{\n    .a = .{\n        .url = "https://example.com/a.tar.gz#abc",\n    },\n'
             '    .b = .{\n        .url = "https://example.com/b.tar.gz",\n    },\n}\n'
         )
-        result = self.run_task("deps/refresh.sh", usage_mode="update", usage_lang="zig")
+        result = self.run_task("deps-refresh/refresh.sh", usage_mode="update", usage_lang="zig")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             self.called(),
@@ -200,13 +202,15 @@ class DepsRefreshTest(StubbedTaskTest):
         (self.root / "packages" / "zig" / "build.zig.zon").write_text(
             ".{\n    .name = .demo,\n    .dependencies = .{},\n}\n"
         )
-        result = self.run_task("deps/refresh.sh", usage_mode="upgrade", usage_lang="zig")
+        result = self.run_task("deps-refresh/refresh.sh", usage_mode="upgrade", usage_lang="zig")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("nothing to refresh", result.stdout)
         self.assertEqual(self.called(), [])
 
     def test_all_requires_deps_langs(self) -> None:
-        self.assertNotEqual(self.run_task("deps/refresh.sh", usage_mode="update", usage_lang="all").returncode, 0)
+        self.assertNotEqual(
+            self.run_task("deps-refresh/refresh.sh", usage_mode="update", usage_lang="all").returncode, 0
+        )
 
 
 if __name__ == "__main__":

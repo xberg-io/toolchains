@@ -662,22 +662,19 @@ class RealTaskSetsTest(unittest.TestCase):
             match = re.search(rf"(?<![\w-]){re.escape(repository)}(?![\w-])", text)
             self.assertIsNone(match, f"a task set names the repository {repository}")
 
-    def test_set_file_tasks_match_the_deprecated_remote_tasks(self) -> None:
-        pairs = {
-            "governance/hooks-install.sh": "governance/hooks-install.sh",
-            "alef-pin/pin-check.sh": "alef/pin-check.sh",
-            "alef/regenerate.sh": "alef/regenerate.sh",
-            "alef/verify-strict.sh": "alef/verify-strict.sh",
-            "alef-version/show.sh": "version/cargo.sh",
-            "deps-refresh/refresh.sh": "deps/refresh.sh",
-        }
-        set_only = {"bats-suite/scripts.sh"}
+    def test_set_file_tasks_are_the_known_executable_scripts(self) -> None:
+        expected = [
+            "alef-pin/pin-check.sh",
+            "alef-version/show.sh",
+            "alef/regenerate.sh",
+            "alef/verify-strict.sh",
+            "bats-suite/scripts.sh",
+            "deps-refresh/refresh.sh",
+            "governance/hooks-install.sh",
+        ]
         shipped = sorted(p.relative_to(self.sets_dir).as_posix() for p in self.sets_dir.rglob("*.sh"))
 
-        self.assertEqual(shipped, sorted({*pairs, *set_only}))
-        for in_set, remote in pairs.items():
-            with self.subTest(file=in_set):
-                self.assertEqual((self.sets_dir / in_set).read_bytes(), (ROOT / "tasks" / remote).read_bytes())
+        self.assertEqual(shipped, expected)
         for path in shipped:
             with self.subTest(executable=path):
                 self.assertTrue(os.access(self.sets_dir / path, os.X_OK))

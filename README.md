@@ -10,7 +10,6 @@ every repository installs locally and in CI.
 | `baseline.toml` | Canonical versions, in mise `[tools]` syntax. Renovate bumps them here first. |
 | `scripts/toolchains.py` | `check` reports drift from the baseline and the task sets; `sync` rewrites a repository's pins and shared tasks. Standard library only, Python 3.11+. |
 | `task-sets/` | Named sets of mise tasks that `sync` writes into a repository (see [Task sets](#task-sets)). |
-| `tasks/` | Deprecated: shared file tasks referenced by URL; use task sets. |
 | `default.json` | Renovate preset for consumers: turns off upstream bumps for baseline tools, groups repo-owned ones. |
 
 ## Consuming repositories
@@ -154,28 +153,6 @@ Left out because the bodies diverge per repository: `rust:build`, `rust:test`, `
 left out: `default` (`mise tasks ls` in 9/9, nothing to maintain), `build` (5/10, a wrapper for the repository's own
 `rust:build`) and the per-language `elixir:*`, `go:*` and `ruby:*` tasks (two or three repositories, each tied to
 its package layout).
-
-## Shared tasks (deprecated)
-
-Use [task sets](#task-sets) instead. These remote file tasks stay at every tag so repositories that still reference
-them keep working, and each is byte-identical to its task set copy (a test enforces this). Repositories reference
-them by tag:
-
-```toml
-[tasks."governance:hooks:install"]
-file = "https://raw.githubusercontent.com/xberg-io/toolchains/v1.5.0/tasks/governance/hooks-install.sh"
-```
-
-Use the same tag as `toolchains.toml`.
-
-| Task | File |
-|---|---|
-| `governance:hooks:install` | `tasks/governance/hooks-install.sh`: allow the system hook channel in `poly.local.toml`, then `poly hooks install` |
-| `alef:pin:check` | `tasks/alef/pin-check.sh`: fail unless the alef on PATH is the clean release `alef.toml` pins |
-| `alef:regenerate` | `tasks/alef/regenerate.sh`: run every alef generator that writes the version |
-| `alef:verify:strict` | `tasks/alef/verify-strict.sh`: `alef verify`, failing on drifted frozen paths too |
-| `version:show` | `tasks/version/cargo.sh`: print the workspace version from `Cargo.toml` |
-| `deps <update\|upgrade> [lang]` | `tasks/deps/refresh.sh`: refresh one ecosystem or every one in `DEPS_LANGS`; repository specifics in the task's `env` (`DEPS_<LANG>_DIR`, `DEPS_NODE_DIRS`, `DEPS_RUST_MANIFESTS`) |
 
 ## Lock gaps
 
