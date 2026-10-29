@@ -9,6 +9,7 @@ every repository installs locally and in CI.
 |---|---|
 | `baseline.toml` | Canonical versions, in mise `[tools]` syntax. Renovate bumps them here first. |
 | `scripts/toolchains.py` | `check` reports drift from the baseline; `sync` rewrites a repository's pins to it. Standard library only, Python 3.11+. |
+| `tasks/` | Shared mise file tasks that consuming repositories reference by tag (see below). |
 | `default.json` | Renovate preset for consumers: turns off upstream bumps for baseline tools, groups repo-owned ones. |
 
 ## Consuming repositories
@@ -51,6 +52,22 @@ python3 /tmp/toolchains/scripts/toolchains.py check --baseline /tmp/toolchains/b
 `check` exits 1 on drift and 2 when nothing could be checked: a missing `mise.toml`, or no declared tool covered by
 the baseline. It lists the repository-owned tools it skipped. `sync` writes nothing when any pin cannot be rewritten
 (for example a `[tools.node]` subtable) or when table options differ from the baseline; fix those by hand.
+
+## Shared tasks
+
+Tasks that every repository needs with the same body live under `tasks/` and are referenced by tag, so a fix
+lands once and repositories pick it up on the next baseline move:
+
+```toml
+[tasks."governance:hooks:install"]
+file = "https://raw.githubusercontent.com/xberg-io/toolchains/v1.4.0/tasks/governance/hooks-install.sh"
+```
+
+Use the same tag as `toolchains.toml`. Keep one-line tasks (`governance:check`, `lint`) inline in `mise.toml`.
+
+| Task | File |
+|---|---|
+| `governance:hooks:install` | `tasks/governance/hooks-install.sh`: allow the system hook channel in `poly.local.toml`, then `poly hooks install` |
 
 ## Lock gaps
 
