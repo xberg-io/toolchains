@@ -2,7 +2,6 @@
 
 [lint]
 description = "Run all linters via poly"
-alias = "lint:check"
 run = "poly lint ."
 
 [format]

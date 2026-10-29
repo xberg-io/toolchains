@@ -100,7 +100,7 @@ Repository specifics come from the environment with a default, never a repositor
 |---|---|---|
 | `governance` | `governance:hooks:install` | `poly` hooks for AI governance |
 | `governance-check` | `governance:check` | needs `ai-rulez` |
-| `lint-format` | `lint` (alias `lint:check`), `format`, `format:check` | repository-wide `poly` |
+| `lint-format` | `lint`, `format`, `format:check` | repository-wide `poly` |
 | `docs-site` | `docs:build`, `docs:serve` | `DOCS_DIR` |
 | `docs-snippets` | `docs:snippets:audit`, `docs:snippets:gaps` | alef snippets; `DOCS_DIR` |
 | `rust` | `rust:format`, `rust:clean` | Cargo workspace |
@@ -128,7 +128,7 @@ the tasks it does not use (remote file tasks count by source file).
 |---|---|
 | `governance` | `governance:hooks:install` 17/17 |
 | `governance-check` | `governance:check` 15/16; apart from `governance` because one repository removed it and still installs the hooks |
-| `lint-format` | `format` 10/13, `format:check` 8/8, `lint` 8/14; `lint:check` stays an alias because three repositories' own `check` task calls it |
+| `lint-format` | `format` 10/13, `format:check` 8/8, `lint` 8/14; no `lint:check` alias, since repositories that removed it would get it back: a `check` task calls `lint` |
 | `docs-site` | `docs:build` 7/8, `docs:serve` 7/8 |
 | `docs-snippets` | `docs:snippets:audit` 3/4, `docs:snippets:gaps` 3/4; apart from `docs-site` because the docs-only repositories have no alef |
 | `rust` | `rust:format` 5/5, `rust:clean` 5/5 |

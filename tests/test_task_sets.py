@@ -801,13 +801,13 @@ class MiseValidatesTaskSetsTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("version:sync", result.stdout + result.stderr)
 
-    def test_poly_and_docs_tasks_run_with_their_alias_and_env(self) -> None:
+    def test_poly_and_docs_tasks_run_with_their_env(self) -> None:
         self.stub("poly")
         self.stub("pnpm")
         repo = self.scratch_repo("lint-format", "lint-format", "docs-site")
 
         for args, env in (
-            (["run", "lint:check"], {}),
+            (["run", "lint"], {}),
             (["run", "format:check"], {}),
             (["run", "docs:build"], {"DOCS_DIR": "site"}),
         ):
