@@ -24,7 +24,7 @@ package_dir() {
 
 refresh_zig() {
   local urls url
-  urls="$(grep '\.url' build.zig.zon | cut -d '=' -f 2 | cut -d '#' -f 1 | tr -d '" ')"
+  urls="$(grep '\.url' build.zig.zon | cut -d '=' -f 2 | cut -d '#' -f 1 | tr -d '", ')"
   for url in $urls; do
     echo "Updating module $url"
     zig fetch --save "$url"

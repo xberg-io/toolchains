@@ -180,6 +180,20 @@ class DepsRefreshTest(StubbedTaskTest):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.called(), ["cargo update", "go get -u=patch ./...", "go mod tidy"])
 
+    def test_zig_fetches_each_dependency_url_without_quotes_or_commas(self) -> None:
+        self.stub("zig")
+        (self.root / "packages" / "zig").mkdir(parents=True)
+        (self.root / "packages" / "zig" / "build.zig.zon").write_text(
+            '.dependencies = .{\n    .a = .{\n        .url = "https://example.com/a.tar.gz#abc",\n    },\n'
+            '    .b = .{\n        .url = "https://example.com/b.tar.gz",\n    },\n}\n'
+        )
+        result = self.run_task("deps/refresh.sh", usage_mode="update", usage_lang="zig")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.called(),
+            ["zig fetch --save https://example.com/a.tar.gz", "zig fetch --save https://example.com/b.tar.gz"],
+        )
+
     def test_all_requires_deps_langs(self) -> None:
         self.assertNotEqual(self.run_task("deps/refresh.sh", usage_mode="update", usage_lang="all").returncode, 0)
 
