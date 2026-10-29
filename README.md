@@ -106,7 +106,7 @@ Repository specifics come from the environment with a default, never a repositor
 | `alef` | `alef:build`, `alef:docs`, `alef:format`, `alef:pin:check`, `alef:regenerate`, `alef:snippets`, `alef:verify`, `alef:verify:strict`, `e2e:generate`, `readme:generate`, `test:bindings`, `publish:{build,package,prepare,validate}` | alef-managed bindings |
 | `alef-version` | `version:show`, `version:bump:{major,minor,patch}`, `version:set`, `alef:sync` (alias `versions:sync`) | the repository defines `version:sync` |
 | `plugin` | `plugin:generate`, `plugin:verify`, `plugin:skills:test`, `plugin:launcher:test`, `plugin:hermes:test`, `plugin:test` | ai-rulez plugin and public skills scripts |
-| `deps-refresh` | `deps <update\|upgrade> [lang]` | `DEPS_LANGS`, `DEPS_<LANG>_DIR`, `DEPS_NODE_DIRS`, `DEPS_RUST_MANIFESTS` in `[env]` |
+| `deps-refresh` | `deps` (`deps <update\|upgrade> [lang]`) | `DEPS_LANGS`, `DEPS_<LANG>_DIR`, `DEPS_NODE_DIRS`, `DEPS_RUST_MANIFESTS` in `[env]` |
 
 ### Why these members
 

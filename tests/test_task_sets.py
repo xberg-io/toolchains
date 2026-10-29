@@ -10,6 +10,7 @@ import tomllib
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -257,6 +258,8 @@ class SyncTaskSetsTest(TaskSetTestCase):
         self.assertEqual(self.read("mise.toml"), MISE + '\n[task_config]\nincludes = ["mise-tasks"]\n')
         self.assert_check(0)
 
+
+class SyncIncludesAndSafetyTest(TaskSetTestCase):
     def test_dropping_the_last_set_removes_only_the_shared_include(self) -> None:
         cases = {
             'includes = [\n  "mise-tasks/shared.toml",\n  "mise-tasks",\n]\n': 'includes = [\n  "mise-tasks",\n]\n',
@@ -274,6 +277,57 @@ class SyncTaskSetsTest(TaskSetTestCase):
                 self.synced()
 
                 self.assertEqual(self.read("mise.toml"), f"[task_config]\n{expected}\n{MISE}")
+
+    def test_dot_prefixed_includes_are_the_same_paths(self) -> None:
+        includes = 'includes = ["./mise-tasks", "./mise-tasks/shared.toml"]\n'
+        self.write("mise.toml", f"[task_config]\n{includes}\n{MISE}")
+        self.select("alpha")
+
+        self.synced()
+        self.synced()
+
+        self.assertEqual(self.read("mise.toml"), f"[task_config]\n{includes}\n{MISE}")
+        self.assert_check(0)
+        self.write("toolchains.toml", 'baseline = "v1.6.0"\n')
+        self.synced()
+        self.assertEqual(self.read("mise.toml"), f'[task_config]\nincludes = ["./mise-tasks"]\n\n{MISE}')
+
+    def test_removing_the_shared_include_touches_only_task_config(self) -> None:
+        cases = {
+            "crlf": (
+                '[task_config]\r\nincludes = [\r\n  "mise-tasks",\r\n  "mise-tasks/shared.toml",\r\n]\r\n',
+                '[task_config]\r\nincludes = [\r\n  "mise-tasks",\r\n]\r\n',
+            ),
+            "comment": (
+                '[task_config]\nincludes = ["mise-tasks", "mise-tasks/shared.toml"] # tasks\n',
+                '[task_config]\nincludes = ["mise-tasks"] # tasks\n',
+            ),
+        }
+        before = '[tasks.x]\nrun = "cat mise-tasks/shared.toml"\nlist = ["mise-tasks/shared.toml", "y"]\n\n'
+        for name, (task_config, expected) in cases.items():
+            with self.subTest(name=name):
+                newline = "\r\n" if name == "crlf" else "\n"
+                prefix = before.replace("\n", newline)
+
+                result = toolchains.without_shared_include(prefix + task_config)
+
+                self.assertEqual(result, prefix + expected)
+
+    @unittest.skipIf(os.name == "nt", "symlinks need privileges on Windows")
+    def test_shared_toml_reached_through_another_include_is_not_local(self) -> None:
+        self.select("alpha")
+        self.synced()
+        (self.repo / "tasks").symlink_to("mise-tasks", target_is_directory=True)
+        self.write(
+            "mise.toml", MISE + '\n[task_config]\nincludes = ["mise-tasks", "mise-tasks/shared.toml", "tasks"]\n'
+        )
+
+        self.assert_check(0)
+
+    def test_unrelated_invalid_task_toml_without_sets_or_overrides_is_ignored(self) -> None:
+        self.write("mise-tasks/x.toml", "[broken\n")
+
+        self.assert_check(0)
 
     def test_unmanaged_shared_dir_without_sets_is_not_checked(self) -> None:
         self.write("mise-tasks/.shared/notes.txt", "mine")
@@ -348,7 +402,55 @@ class SyncTaskSetsTest(TaskSetTestCase):
         self.synced()
 
         self.assertEqual(self.read("mise-tasks/.shared/alpha/notes.txt"), "mine")
-        self.assert_check(1, "mise-tasks/.shared/alpha/notes.txt: not written by sync")
+        self.assert_check(1, "mise-tasks/.shared/alpha/notes.txt: not written by sync for the selected task sets; sync")
+        _, _, err = self.main("check")
+        self.assertIn("sync never deletes it, so delete it", err)
+
+    def test_manifest_is_written_after_stale_files_are_deleted(self) -> None:
+        self.select("alpha", "beta")
+        self.synced()
+        self.select("beta")
+        order = []
+        real_unlink, real_write = Path.unlink, toolchains.write_atomic
+
+        def unlink(path: Path, *args, **kwargs) -> None:
+            order.append(("delete", path.name))
+            real_unlink(path, *args, **kwargs)
+
+        def write(path: Path, *args, **kwargs) -> None:
+            order.append(("write", path.name))
+            real_write(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "unlink", unlink), mock.patch.object(toolchains, "write_atomic", write):
+            self.synced()
+
+        self.assertIn(("delete", "two.sh"), order)
+        self.assertEqual(order[-1], ("write", ".manifest"))
+        self.assertLess(order.index(("delete", "two.sh")), order.index(("write", ".manifest")))
+
+    def test_windows_does_not_rewrite_for_the_exec_bit(self) -> None:
+        self.select("alpha")
+        self.synced()
+        (self.repo / ALPHA_FILE).chmod(0o644)
+
+        with mock.patch.object(toolchains, "POSIX_MODES", False):
+            out = self.synced()
+
+        self.assertNotIn("shared task files", out)
+
+    def test_target_is_rechecked_just_before_writing(self) -> None:
+        self.select("alpha")
+        calls = []
+        real = toolchains.owned_target
+
+        def owned(repo: Path, relative: str) -> Path:
+            calls.append(relative)
+            return real(repo, relative)
+
+        with mock.patch.object(toolchains, "owned_target", owned):
+            self.synced()
+
+        self.assertGreaterEqual(calls.count(ALPHA_FILE), 2)
 
     def test_ref_names_the_tag_in_the_header(self) -> None:
         self.select("beta")
@@ -538,9 +640,9 @@ class RealTaskSetsTest(unittest.TestCase):
             for task in task_set.tasks:
                 head, _, tail = task.rpartition(":")
                 documented = f"`{task}`" in rows[task_set.name] or re.search(
-                    rf"`{re.escape(head)}:\{{[^}}]*\b{re.escape(tail)}\b", rows[task_set.name]
+                    rf"`{re.escape(head)}:\{{[^}}]*(?<![\w-]){re.escape(tail)}(?![\w-])", rows[task_set.name]
                 )
-                self.assertTrue(documented or task == "deps", f"README lacks {task} in {task_set.name}")
+                self.assertTrue(documented, f"README lacks {task} in {task_set.name}")
 
     def test_rendering_keeps_every_task_and_overrides_drop_exactly_one(self) -> None:
         for task_set in toolchains.resolve_sets(self.sets_dir, self.names)[0]:
