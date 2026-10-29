@@ -94,7 +94,7 @@ include; and any generated file that differs from what `sync` would write, inclu
 that selects a set or has a manifest, every file under `mise-tasks/.shared/` must be one sync wrote.
 
 Repository specifics come from the environment with a default, never a repository name: set `DOCS_DIR` (default
-`docs-site`) or the `deps-refresh` variables in `mise.toml`'s `[env]`.
+`docs-site`), `BATS_LIB_REF` or the `deps-refresh` variables in `mise.toml`'s `[env]`.
 
 | Set | Tasks | Notes |
 |---|---|---|
@@ -111,6 +111,8 @@ Repository specifics come from the environment with a default, never a repositor
 | `alef-version` | `version:show`, `version:bump:{major,minor,patch}` | the repository defines `version:sync` |
 | `plugin` | `plugin:generate`, `plugin:verify`, `plugin:skills:test` | ai-rulez plugin and public skills scripts |
 | `plugin-runtime` | `plugin:launcher:test`, `plugin:hermes:test`, `plugin:test` | MCP launcher, Hermes bridge and OpenCode test scripts |
+| `bats-lib` | `test:scripts:lib:check`, `test:scripts:lib:sync` | the repository's `scripts/task/sync-bats-lib.sh`; `BATS_LIB_REF` in `[env]` |
+| `bats-suite` | `test:scripts` | Bats suites under `scripts/tests/bats` |
 | `deps-refresh` | `deps` (`deps <update\|upgrade> [lang]`) | `DEPS_LANGS`, `DEPS_<LANG>_DIR`, `DEPS_NODE_DIRS`, `DEPS_RUST_MANIFESTS` in `[env]` |
 
 ### Why these members
@@ -137,6 +139,8 @@ the tasks it does not use (remote file tasks count by source file).
 | `alef-version` | `version:show` 5/5, `version:bump:*` 4/5 each |
 | `plugin` | `plugin:generate` 6/6, `plugin:verify` 6/6, `plugin:skills:test` 6/6 |
 | `plugin-runtime` | `plugin:launcher:test` 3/3, `plugin:hermes:test` 3/3, `plugin:test` 2/4; apart from `plugin` because three plugin repositories do not define the first two |
+| `bats-lib` | `test:scripts:lib:check` 5/5, `test:scripts:lib:sync` 5/5, with the `BATS_LIB_REF` three of them set on the task moved to `[env]` |
+| `bats-suite` | `test:scripts` 3/4, a file task; apart from `bats-lib` because two of its repositories name or split their suites differently |
 | `deps-refresh` | `deps` 5/5, already one shared file |
 
 Removed on 2026-10-29: `governance:generate` (1/2), `docs:lint:prose` (2/5), `rust:licenses` and the `versions:sync`

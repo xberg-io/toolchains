@@ -1,0 +1,5 @@
+# The repository's Bats suite under scripts/tests/bats, with the shared helpers bats-lib vendors.
+
+["test:scripts"]
+description = "Run the Bats contract tests for the repo's own shell scripts"
+file = "mise-tasks/.shared/bats-suite/scripts.sh"

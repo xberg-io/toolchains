@@ -671,9 +671,10 @@ class RealTaskSetsTest(unittest.TestCase):
             "alef-version/show.sh": "version/cargo.sh",
             "deps-refresh/refresh.sh": "deps/refresh.sh",
         }
+        set_only = {"bats-suite/scripts.sh"}
         shipped = sorted(p.relative_to(self.sets_dir).as_posix() for p in self.sets_dir.rglob("*.sh"))
 
-        self.assertEqual(shipped, sorted(pairs))
+        self.assertEqual(shipped, sorted({*pairs, *set_only}))
         for in_set, remote in pairs.items():
             with self.subTest(file=in_set):
                 self.assertEqual((self.sets_dir / in_set).read_bytes(), (ROOT / "tasks" / remote).read_bytes())

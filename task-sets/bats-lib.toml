@@ -1,0 +1,9 @@
+# The shared Bats helper library. Runs the repository script scripts/task/sync-bats-lib.sh.
+
+["test:scripts:lib:check"]
+description = "Fail when the vendored Bats helper library has drifted from its pinned source"
+run = "scripts/task/sync-bats-lib.sh --check"
+
+["test:scripts:lib:sync"]
+description = "Refresh the vendored Bats helper library from xberg-io/actions"
+run = "scripts/task/sync-bats-lib.sh sync"
