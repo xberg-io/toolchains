@@ -678,7 +678,9 @@ class RealTaskSetsTest(unittest.TestCase):
         for in_set, remote in pairs.items():
             with self.subTest(file=in_set):
                 self.assertEqual((self.sets_dir / in_set).read_bytes(), (ROOT / "tasks" / remote).read_bytes())
-                self.assertTrue(os.access(self.sets_dir / in_set, os.X_OK))
+        for path in shipped:
+            with self.subTest(executable=path):
+                self.assertTrue(os.access(self.sets_dir / path, os.X_OK))
 
 
 def required_tasks(path: Path) -> list[str]:
