@@ -10,8 +10,9 @@ Version files mise does not read must agree too: `.nvmrc`, `.node-version`, `.py
 and Dockerfile `FROM node|python|golang|ruby:<tag>` (major.minor only). Exits 0 when consistent, 1 on drift,
 2 on unusable input or when nothing was checked.
 
-`sync` rewrites those pins to the baseline versions in place, skipping overridden tools, and records the
-baseline ref in toolchains.toml. It edits matching lines only, so comments and layout survive.
+`sync` rewrites those pins to the baseline versions in place, skipping overridden tools, moves the version files
+above except `.tool-versions` and Dockerfiles to the baseline or override, and records the baseline ref in
+toolchains.toml. It edits matching lines only, so comments and layout survive.
 
 Task sets: toolchains.toml `task_sets` names sets under task-sets/. `sync` writes their tasks to
 mise-tasks/shared.toml, copies their file tasks to mise-tasks/.shared/ and adds both to mise.toml's
@@ -799,10 +800,39 @@ def with_baseline_ref(text: str | None, ref: str) -> str:
     return new_text
 
 
-def sync(baseline_path: Path, repo: Path, ref: str | None, sets_dir: Path = SETS_DIR) -> tuple[list[str], list[str]]:
-    """Move every non-overridden pin to the baseline and write the selected task sets.
+@dataclass(frozen=True)
+class SyncResult:
+    pins: list[str]
+    shared: list[str]
+    files: list[str]
+    docker: list[str]
 
-    Returns the tools whose pin changed and the shared task files written or deleted. Writes nothing on error.
+
+def plan_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str, dict]) -> tuple[dict, list[str]]:
+    """New text for every version file sync rewrites, and the Dockerfile drift it leaves to a person."""
+    wanted, key_for = expectations(baseline, overrides)
+    writes: dict[Path, str] = {}
+    dockerfiles = []
+    for path in repository_files(repo):
+        name = path.rsplit("/", 1)[-1]
+        if version_files.is_dockerfile(name):
+            dockerfiles.append(path)
+        elif name in version_files.VERSION_FILES:
+            try:
+                text = read_raw(repo / path)
+            except UnicodeDecodeError:
+                continue
+            new_text = version_files.rewritten(path, text, wanted)
+            if new_text != text:
+                writes[repo / path] = new_text
+    return writes, version_files.check(repo, dockerfiles, wanted, key_for).errors
+
+
+def sync(baseline_path: Path, repo: Path, ref: str | None, sets_dir: Path = SETS_DIR) -> SyncResult:
+    """Move every non-overridden pin and version file to the baseline and write the selected task sets.
+
+    Returns the tools whose pin changed, the shared task files written or deleted, the version files rewritten
+    and the Dockerfile drift left to fix by hand. Writes nothing on error.
     """
     baseline = load_baseline(baseline_path)
     pins = repo_pins(repo)
@@ -842,6 +872,7 @@ def sync(baseline_path: Path, repo: Path, ref: str | None, sets_dir: Path = SETS
             f"could not rewrite the pin for: {', '.join(missed)} "
             '(sync edits `name = "v"`, `name = ["v", ...]` and inline `{ version = "v" }` entries under [tools])'
         )
+    file_writes, docker = plan_version_files(repo, baseline, overrides)
     toolchains_path = repo / "toolchains.toml"
     if ref:
         writes[toolchains_path] = with_baseline_ref(
@@ -849,10 +880,11 @@ def sync(baseline_path: Path, repo: Path, ref: str | None, sets_dir: Path = SETS
         )
     # Shared files first: an interrupted sync then leaves mise.toml unchanged rather than including a missing file.
     touched = write_shared(repo, shared, stale)
-    for path, content in writes.items():
+    for path, content in {**file_writes, **writes}.items():
         if not path.is_file() or read_raw(path) != content:
             write_raw(path, content)
-    return sorted(changed), touched
+    files = sorted(path.relative_to(repo).as_posix() for path in file_writes)
+    return SyncResult(sorted(changed), touched, files, docker)
 
 
 def write_shared(repo: Path, shared: dict[str, tuple[bytes, int]], stale: list[str]) -> list[str]:
@@ -909,10 +941,15 @@ def run_check(args: argparse.Namespace) -> int:
 
 
 def run_sync(args: argparse.Namespace) -> int:
-    changed, touched = sync(args.baseline, args.repo, args.ref, args.sets_dir)
+    result = sync(args.baseline, args.repo, args.ref, args.sets_dir)
+    changed = result.pins
     print(f"updated {len(changed)} pins: {', '.join(changed)}" if changed else "already on the baseline")
-    if touched:
-        print(f"updated {len(touched)} shared task files: {', '.join(touched)}")
+    if result.shared:
+        print(f"updated {len(result.shared)} shared task files: {', '.join(result.shared)}")
+    if result.files:
+        print(f"updated {len(result.files)} version files: {', '.join(result.files)}")
+    if result.docker:
+        print(f"Dockerfile image tags are not rewritten; fix by hand: {'; '.join(result.docker)}")
     return 0
 
 

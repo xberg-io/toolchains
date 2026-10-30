@@ -1,4 +1,4 @@
-"""Compare the version files mise does not read with the org baseline, for `toolchains.py check`.
+"""Compare the version files mise does not read with the org baseline, and rewrite them, for `toolchains.py`.
 
 `.nvmrc`, `.node-version`, `.python-version`, `.ruby-version`, `.tool-versions`, nested `rust-toolchain.toml`,
 `rust-toolchain` and `package.json` `packageManager: pnpm@X` must state the expected version exactly. Dockerfile
@@ -42,6 +42,7 @@ NUMERIC_CHANNEL = re.compile(r"\d+\.\d+(?:\.\d+)?")
 # .tool-versions values that name no version.
 NOT_A_VERSION = frozenset({"system", "lts", "latest"})
 TEMURIN = re.compile(r"temurin-\d+\.\d+\.\d+\+\S+")
+CHANNEL_LINE = re.compile(r"""^(\s*channel\s*=\s*)(["'])(.*?)(\2)""", re.MULTILINE)
 PACKAGE_MANAGER = re.compile(r'("packageManager"\s*:\s*"pnpm@)([^"+]*)((?:\+[^"]*)?)(")')
 
 # A baseline key to (expected version, how a message names it), or None when the baseline does not cover it.
@@ -70,6 +71,18 @@ def first_value(text: str) -> str:
     """The first line that is neither blank nor a comment, stripped."""
     lines = (line.split("#", 1)[0].strip() for line in text.splitlines())
     return next((line for line in lines if line), "")
+
+
+def with_first_value(text: str, value: str) -> str:
+    """text with its first value (see first_value) replaced, keeping the line's spacing, comment and newline."""
+    lines = text.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        current = line.split("#", 1)[0].strip()
+        if current:
+            start = line.index(current)
+            lines[index] = line[:start] + value + line[start + len(current) :]
+            return "".join(lines)
+    return text
 
 
 def rust_channel(name: str, text: str) -> str | None:
@@ -229,3 +242,39 @@ def check(repo: Path, paths: list[str], wanted: Wanted, key_for: KeyFor) -> Find
         if compared:
             found.files.append(path)
     return found
+
+
+def rewritten_rust(path: str, text: str, version: str) -> str:
+    """A nested rust-toolchain file with a numeric channel moved to version; any other channel is left alone."""
+    channel = rust_channel(path.rsplit("/", 1)[-1], text)
+    if not channel or not NUMERIC_CHANNEL.fullmatch(channel):
+        return text
+    if CHANNEL_LINE.search(text):
+        return CHANNEL_LINE.sub(lambda m: f"{m.group(1)}{m.group(2)}{version}{m.group(4)}", text, count=1)
+    return with_first_value(text, version)
+
+
+def rewritten(path: str, text: str, wanted: Wanted) -> str:
+    """text with the version a single-version file, nested rust-toolchain file or packageManager states moved to
+    what wanted expects. Other files, and pins wanted does not cover, come back unchanged."""
+    name = path.rsplit("/", 1)[-1]
+    if name in SINGLE:
+        key, prefix = SINGLE[name]
+        expected = wanted(key)
+        current = first_value(text)
+        if expected is None or not current or current.removeprefix(prefix) == expected[0]:
+            return text
+        kept = prefix if current.startswith(prefix) else ""
+        return with_first_value(text, f"{kept}{expected[0]}")
+    if is_nested_rust(path):
+        expected = wanted("rust")
+        return text if expected is None else rewritten_rust(path, text, expected[0])
+    if name == "package.json":
+        expected = wanted("pnpm")
+        if expected is None:
+            return text
+        # A +sha512 suffix hashes the release it names, so a moved version drops it. ~keep
+        return PACKAGE_MANAGER.sub(
+            lambda m: m.group(0) if m.group(2) == expected[0] else f"{m.group(1)}{expected[0]}{m.group(4)}", text
+        )
+    return text
