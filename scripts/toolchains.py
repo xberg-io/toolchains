@@ -3,8 +3,9 @@
 
 `check` reads <repo>/mise.toml, <repo>/rust-toolchain.toml and <repo>/toolchains.toml. Every tool the repository
 declares that the baseline also lists must use the baseline version, unless toolchains.toml records an
-override with a reason. It also fails when the repository root holds a go-task Taskfile or `.task/` directory,
-since mise runs the org's tasks. Exits 0 when consistent, 1 on drift, 2 on unusable input.
+override with a reason. Pinning ai-rulez, which always runs at its newest release, is drift. It also fails
+when the repository root holds a go-task Taskfile or `.task/` directory, since mise runs the org's tasks.
+Exits 0 when consistent, 1 on drift, 2 on unusable input.
 
 `sync` rewrites those pins to the baseline versions in place, skipping overridden tools, and records the
 baseline ref in toolchains.toml. It edits matching lines only, so comments and layout survive.
@@ -31,6 +32,8 @@ from pathlib import Path
 RUST = "rust"
 # Registry aliases mise accepts for a baseline tool under another name.
 ALIASES = {"nodejs": "node", "golang": "go", "tofu": "opentofu"}
+# Tools no repository may pin, in any backend spelling, with the replacement.
+UNPINNED = {"ai-rulez": "remove it from mise.toml and run `npx -y ai-rulez@latest`"}
 QUOTED = r"""(?:"[^"]*"|'[^']*')"""
 # Every root file name go-task v3 reads, in any letter case (macOS and Windows match case-insensitively).
 TASKFILE = re.compile(r"taskfile(?:\.dist)?\.ya?ml", re.IGNORECASE)
@@ -619,13 +622,21 @@ def plan_task_sets(repo: Path, sets_dir: Path, ref: str | None, mise_text: str) 
     return expected, stale, mise_text
 
 
+def without_unpinned(pins: dict[str, Pin], report: Report) -> dict[str, Pin]:
+    """Report every pin of a tool that must run unpinned, whatever backend spells it; return the other pins."""
+    for name in sorted(pins):
+        if short_name(name) in UNPINNED:
+            report.errors.append(f"{name}: {short_name(name)} is never pinned; {UNPINNED[short_name(name)]}")
+    return {name: pin for name, pin in pins.items() if short_name(name) not in UNPINNED}
+
+
 def check(baseline_path: Path, repo: Path, sets_dir: Path = SETS_DIR) -> Report:
     baseline = load_baseline(baseline_path)
     pins = repo_pins(repo)
     overrides = load_overrides(repo)
     report = Report()
 
-    for name, pin in sorted(pins.items()):
+    for name, pin in sorted(without_unpinned(pins, report).items()):
         if name not in baseline:
             alias_of = baseline_key_for(name, baseline)
             if alias_of:

@@ -61,6 +61,21 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("drift: node: mise.toml pins 22.20.0, baseline is 24.22.1", err)
 
+    def test_pinned_ai_rulez_fails_in_any_spelling(self) -> None:
+        for name in ('"github:Goldziher/ai-rulez"', '"npm:ai-rulez"', '"aqua:Goldziher/ai-rulez"'):
+            with self.subTest(name=name):
+                self.write("mise.toml", f'[tools]\nnode = "24.22.1"\n{name} = "5.9.3"\n')
+
+                code, out, err = self.run_main()
+
+                self.assertEqual(code, 1)
+                self.assertIn(
+                    f"drift: {name.strip(chr(34))}: ai-rulez is never pinned; remove it from mise.toml and run "
+                    "`npx -y ai-rulez@latest`",
+                    err,
+                )
+                self.assertNotIn("repository-owned", out)
+
     def test_rust_channel_drift_fails(self) -> None:
         self.write("mise.toml", '[tools]\nnode = "24.22.1"\n')
         self.write("rust-toolchain.toml", '[toolchain]\nchannel = "1.95"\n')
