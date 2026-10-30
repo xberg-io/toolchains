@@ -18,6 +18,7 @@ pnpm = "10.4.1"
 python = "3.13.18"
 go = "1.25.3"
 ruby = "3.4.7"
+java = "temurin-21.0.9+10.0.LTS"
 rust = "1.99.1"
 "github:nextest-rs/nextest" = { version = "0.9.149", version_prefix = "cargo-nextest-" }
 """
@@ -425,6 +426,84 @@ class VersionFilesTest(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("version files not checked: Containerfile (node:${NODE_VERSION}-slim)", out)
         self.assertNotIn("checked 1 version files", out)
+
+    def test_nested_named_rust_channels_are_listed_not_checked(self) -> None:
+        for channel in ("nightly", "nightly-2026-01-01", "stable", "beta"):
+            with self.subTest(channel=channel):
+                self.write("fuzz/rust-toolchain.toml", f'[toolchain]\nchannel = "{channel}"\n')
+                self.write("miri/rust-toolchain", f"{channel}\n")
+
+                code, out, err = self.run_main()
+
+                self.assertEqual(code, 0, err)
+                self.assertIn(
+                    f"version files not checked: fuzz/rust-toolchain.toml (channel {channel}), "
+                    f"miri/rust-toolchain (channel {channel})",
+                    out,
+                )
+
+    def test_unparseable_rust_toolchain_toml_is_drift(self) -> None:
+        self.write("e2e/rust-toolchain.toml", "[toolchain\nchannel = 1.99.1\n")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn("drift: rust: e2e/rust-toolchain.toml is unparseable TOML", err)
+
+    def test_tool_versions_skips_non_versions_and_non_temurin_java(self) -> None:
+        self.write(".tool-versions", "nodejs system\npython latest\nruby lts\njava openjdk-21\n")
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertIn("version files not checked: .tool-versions (java openjdk-21)", out)
+
+    def test_tool_versions_compares_temurin_java(self) -> None:
+        self.write(".tool-versions", "java temurin-17.0.1+12\n")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn("drift: java: .tool-versions pins temurin-17.0.1+12, baseline is temurin-21.0.9+10.0.LTS", err)
+
+    def test_dockerfile_templates_and_docs_are_not_dockerfiles(self) -> None:
+        for name in ("Dockerfile.j2", "Dockerfile.tmpl", "Dockerfile.md", "Dockerfile.txt", "Dockerfile.dev.j2"):
+            self.write(name, "FROM node:12\n")
+        self.write("Dockerfile.dev", "FROM node:24.22\n")
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertIn("checked 1 version files: Dockerfile.dev", out)
+
+    def test_dockerfile_arg_fallbacks(self) -> None:
+        self.write("Dockerfile", "ARG NODE\nFROM node:${NODE:-24.22}-slim\nFROM python:${PY:-3.12}\n")
+        self.write("b.Dockerfile", "FROM node:${NODE:+24}\n")
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertNotIn("node: Dockerfile", err)
+        self.assertIn("drift: python: Dockerfile FROM python:3.12 is 3.12, baseline is 3.13.18", err)
+        self.assertIn("version files not checked: b.Dockerfile (node:${NODE:+24})", out)
+
+    def test_failing_git_is_an_error_not_a_disk_walk(self) -> None:
+        self.write(".git", "gitdir: /nonexistent/worktree\n")
+        self.write(".nvmrc", "24.22.1\n")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 2)
+        self.assertIn("error: git cannot list the files of", err)
+
+    def test_disk_walk_skips_build_outputs_and_environments(self) -> None:
+        for directory in (".venv", "target", "dist", "build"):
+            self.write(f"{directory}/.python-version", "3.8\n")
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("version files", out)
 
 
 class SyncTest(unittest.TestCase):

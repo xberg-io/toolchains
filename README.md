@@ -67,25 +67,34 @@ the repository root still holds go-task files, since the org runs its tasks with
 checkout only tracked files count, so an ignored `.task/` cache passes; elsewhere the files on disk are checked.
 
 Version files mise does not read must agree with the baseline as well, or with the tool's override in
-`toolchains.toml`, anywhere in the repository except `node_modules`, `vendor`, `vendored`, `third_party` and
-`third-party` directories (tracked files only in a git checkout). `check` lists the files it compared, and exits 1
-when one disagrees:
+`toolchains.toml`. In a git checkout the tracked files count, outside `node_modules`, `vendor`, `vendored`,
+`third_party` and `third-party` directories; a checkout git cannot read (for example one it reports as dubious
+ownership) is an error, exit 2, never a walk of the disk. A directory without `.git`, such as a `git archive`
+export, is walked on disk, skipping those directories and `.venv`, `target`, `dist` and `build` too. `check` lists
+the files it compared and the ones it could not, and exits 1 when one disagrees:
 
 | File | Compared with | Match |
 |---|---|---|
 | `.nvmrc`, `.node-version` | `node` | exact; a leading `v` is ignored, a bare major (`26`) or `lts/*` is drift |
 | `.python-version` | `python` | exact, first version line |
 | `.ruby-version` | `ruby` | exact; a `ruby-` prefix is ignored |
-| `.tool-versions` | each baseline tool it names (`nodejs`, `golang` included) | exact, first version |
+| `.tool-versions` | each baseline tool it names (`nodejs`, `golang` included) | exact, first version; `system`, `lts` and `latest` are skipped, `java` only when `temurin-<x.y.z>+<build>` |
 | `package.json` `packageManager` | `pnpm` | exact; a `+sha512.…` suffix is ignored, other package managers are skipped |
-| nested `rust-toolchain.toml`, any `rust-toolchain` | `rust` | exact, like the root file: `1.99` is drift against `1.99.1` |
-| `Dockerfile`, `*.Dockerfile`, `Dockerfile.*`, `Containerfile` | `node`, `python`, `go`, `ruby` | major.minor of official `node`, `python`, `golang`, `ruby` images |
+| nested `rust-toolchain.toml`, any `rust-toolchain` | `rust` | exact, like the root file: `1.99` is drift against `1.99.1`; named channels (`nightly`, `nightly-2026-01-01`, `stable`, `beta`) are listed as not checked; invalid TOML is drift |
+| `Dockerfile`, `Dockerfile.<name>`, `*.Dockerfile`, `Containerfile` | `node`, `python`, `go`, `ruby` | major.minor of official `node`, `python`, `golang`, `ruby` images |
 
-Exact matching keeps every place that installs a runtime on the version CI locks. Dockerfile tags are compared on
-major.minor only, because the official images publish patch tags after the release the baseline already follows:
-`FROM node:26.13-slim` and `FROM node:26.13.1` pass against `26.13.0`; `FROM node:26`, `node:latest` and an untagged
-`node` are drift. An `ARG` default in the same file resolves a `${VAR}` tag; a tag that still names an argument
-without a default is listed as not checked. Other registries (`ghcr.io/…/node`) and other images are not compared.
+Exact matching keeps every place that installs a runtime on the version CI locks. That includes
+`.python-version`: `3.13` is drift against `3.13.18` on purpose, since pyenv and uv resolve it to whatever patch
+is installed. The root `rust-toolchain.toml` is checked with the mise pins and must name the baseline channel
+exactly; a repository that needs another toolchain for fuzzing or Miri keeps it in a nested file.
+
+Dockerfile tags are compared on major.minor only, because the official images publish patch tags after the release
+the baseline already follows: `FROM node:26.13-slim` and `FROM node:26.13.1` pass against `26.13.0`; `FROM node:26`,
+`node:latest` and an untagged `node` are drift. `Dockerfile.<name>` with a template or document extension (`.j2`,
+`.jinja`, `.tmpl`, `.tpl`, `.template`, `.md`, `.txt`) is not a Dockerfile. An `ARG` default in the same file
+resolves a `${VAR}` tag, and `${VAR:-x}` or `${VAR-x}` falls back to `x`; a tag that still names an argument
+without a value is listed as not checked. Other registries (`ghcr.io/…/node`) and other images are not compared.
+
 `sync` writes nothing when any pin cannot be rewritten (for example a `[tools.node]` subtable) or when table options
 differ from the baseline; fix those by hand.
 
