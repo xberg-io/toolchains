@@ -3,7 +3,7 @@
 set -euo pipefail
 
 command -v ai-rulez >/dev/null || {
-  echo "ai-rulez is not on PATH; run mise install" >&2
+  echo "ai-rulez is not on PATH; install it with npm install -g ai-rulez@latest" >&2
   exit 1
 }
 

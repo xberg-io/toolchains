@@ -1,5 +1,8 @@
 # AI governance: the ai-rulez output check.
+# ai-rulez is never pinned: npx runs its newest release, which needs node 22 or later. Task `tools` pins
+# match baseline.toml.
 
 ["governance:check"]
 description = "Check materialized local governance outputs against shared sources"
-run = "ai-rulez generate --check --no-local --strict-config"
+tools = { node = "26.12.1" }
+run = "npx -y ai-rulez@latest generate --check --no-local --strict-config"

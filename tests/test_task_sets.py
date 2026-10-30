@@ -653,6 +653,33 @@ class RealTaskSetsTest(unittest.TestCase):
                     dropped = tomllib.loads(toolchains.render_shared([task_set], {task: "x"}, "v0"))
                     self.assertEqual(sorted(dropped), sorted(set(task_set.tasks) - {task}))
 
+    def test_task_tools_use_the_baseline_versions(self) -> None:
+        baseline = toolchains.load_baseline(ROOT / "baseline.toml")
+        pinned = {
+            (task_set.name, task, tool): version
+            for task_set in toolchains.resolve_sets(self.sets_dir, self.names)[0]
+            for task, entry in task_set.tasks.items()
+            for tool, version in entry.get("tools", {}).items()
+        }
+
+        self.assertIn(("governance-check", "governance:check", "node"), pinned)
+        for (name, task, tool), version in pinned.items():
+            with self.subTest(set=name, task=task, tool=tool):
+                self.assertIn(tool, baseline)
+                self.assertEqual(version, baseline[tool].version)
+
+    def test_ai_rulez_runs_through_npx_at_latest_on_node(self) -> None:
+        for task_set in toolchains.resolve_sets(self.sets_dir, self.names)[0]:
+            for task, entry in task_set.tasks.items():
+                runs = entry.get("run", [])
+                text = "\n".join(step for step in ([runs] if isinstance(runs, str) else runs) if isinstance(step, str))
+                if "ai-rulez" not in text:
+                    continue
+                with self.subTest(set=task_set.name, task=task):
+                    self.assertNotRegex(text, r"(?<![\w.-])ai-rulez\s")
+                    self.assertIn("npx -y ai-rulez@latest ", text)
+                    self.assertIn("node", entry.get("tools", {}))
+
     def test_no_set_task_hard_codes_a_repository_name(self) -> None:
         sources = sorted(path for path in self.sets_dir.rglob("*") if path.is_file())
         self.assertTrue(any(path.suffix == ".sh" for path in sources))

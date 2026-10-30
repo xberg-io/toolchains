@@ -101,7 +101,7 @@ Repository specifics come from the environment with a default, never a repositor
 | Set | Tasks | Notes |
 |---|---|---|
 | `governance` | `governance:hooks:install` | `poly` hooks for AI governance |
-| `governance-check` | `governance:check` | needs `ai-rulez` |
+| `governance-check` | `governance:check` | `npx -y ai-rulez@latest` on the baseline `node` |
 | `lint-format` | `lint`, `format`, `format:check` | repository-wide `poly` |
 | `docs-site` | `docs:build`, `docs:serve` | `DOCS_DIR` |
 | `docs-snippets` | `docs:snippets:audit`, `docs:snippets:gaps` | alef snippets; `DOCS_DIR` |
@@ -111,7 +111,7 @@ Repository specifics come from the environment with a default, never a repositor
 | `alef-publish` | `publish:{build,package,prepare,validate}` | alef release packaging |
 | `alef-pin` | `alef:pin:check` | the `alef_version` pin in `alef.toml` |
 | `alef-version` | `version:show`, `version:bump:{major,minor,patch}` | the repository defines `version:sync` |
-| `plugin` | `plugin:generate`, `plugin:verify`, `plugin:skills:test` | ai-rulez plugin and public skills scripts |
+| `plugin` | `plugin:generate`, `plugin:verify`, `plugin:skills:test` | `npx -y ai-rulez@latest` plugin and public skills scripts |
 | `plugin-runtime` | `plugin:launcher:test`, `plugin:hermes:test`, `plugin:test` | MCP launcher, Hermes bridge and OpenCode test scripts |
 | `bats-lib` | `test:scripts:lib:check`, `test:scripts:lib:sync` | the repository's `scripts/task/sync-bats-lib.sh`; `BATS_LIB_REF` in `[env]` |
 | `bats-suite` | `test:scripts` | Bats suites under `scripts/tests/bats` |
