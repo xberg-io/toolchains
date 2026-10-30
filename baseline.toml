@@ -48,7 +48,9 @@ actionlint = "1.7.12"
 bats = "1.14.0"
 lychee = "0.24.2"
 helm = "4.3.1"
-kubectl = "1.37.2"
+# kubectl supports one minor of skew from the server, and the staging GKE control plane is on 1.35: stay on 1.36
+# until it moves (renovate.json holds the line).
+kubectl = "1.36.5"
 opentofu = "1.13.2"
 k6 = "2.3.0"
 aws-cli = "2.39.2"

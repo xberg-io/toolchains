@@ -28,6 +28,12 @@
       "enabled": false
     },
     {
+      "description": "kubectl stays within one minor of the staging GKE server (1.35); move the bound with the cluster",
+      "matchFileNames": ["baseline.toml"],
+      "matchDepNames": ["kubectl"],
+      "allowedVersions": "<1.37.0"
+    },
+    {
       "description": "nextest tags releases as cargo-nextest-<version>, matching the baseline's version_prefix",
       "matchDepNames": ["github:nextest-rs/nextest"],
       "extractVersion": "^cargo-nextest-(?<version>.+)$"
