@@ -53,6 +53,9 @@ mise lock
 python3 /tmp/toolchains/scripts/toolchains.py check --baseline /tmp/toolchains/baseline.toml
 ```
 
+`sync` also moves the version files mise does not read (see the table below), so a baseline bump is one
+`sync`; it prints Dockerfile tags that still disagree, since it does not rewrite them.
+
 `mise lock` after `sync` is required, not optional: shared tasks can pin their own tools (`governance:check` and the
 `plugin` tasks run on a task-level `node = "26.13.0"`), and a lock without that version fails `--locked` CI with
 "No lockfile URL found for node@26.13.0". With `MISE_TASK_RUN_AUTO_INSTALL=false` and a stale lock, the task falls
@@ -73,15 +76,15 @@ ownership) is an error, exit 2, never a walk of the disk. A directory without `.
 export, is walked on disk, skipping those directories and `.venv`, `target`, `dist` and `build` too. `check` lists
 the files it compared and the ones it could not, and exits 1 when one disagrees:
 
-| File | Compared with | Match |
-|---|---|---|
-| `.nvmrc`, `.node-version` | `node` | exact; a leading `v` is ignored, a bare major (`26`) or `lts/*` is drift |
-| `.python-version` | `python` | exact, first version line |
-| `.ruby-version` | `ruby` | exact; a `ruby-` prefix is ignored |
-| `.tool-versions` | each baseline tool it names (`nodejs`, `golang` included) | exact, first version; `system`, `lts` and `latest` are skipped, `java` only when `temurin-<x.y.z>+<build>` |
-| `package.json` `packageManager` | `pnpm` | exact; a `+sha512.…` suffix is ignored, other package managers are skipped |
-| nested `rust-toolchain.toml`, any `rust-toolchain` | `rust` | exact, like the root file: `1.99` is drift against `1.99.1`; named channels (`nightly`, `nightly-2026-01-01`, `stable`, `beta`) are listed as not checked; invalid TOML is drift |
-| `Dockerfile`, `Dockerfile.<name>`, `*.Dockerfile`, `Containerfile` | `node`, `python`, `go`, `ruby` | major.minor of official `node`, `python`, `golang`, `ruby` images |
+| File | Compared with | Match | `sync` |
+|---|---|---|---|
+| `.nvmrc`, `.node-version` | `node` | exact; a leading `v` is ignored, a bare major (`26`) or `lts/*` is drift | rewrites, keeping a `v` |
+| `.python-version` | `python` | exact, first version line | rewrites the first line |
+| `.ruby-version` | `ruby` | exact; a `ruby-` prefix is ignored | rewrites, keeping `ruby-` |
+| `.tool-versions` | each baseline tool it names (`nodejs`, `golang` included) | exact, first version; `system`, `lts` and `latest` are skipped, `java` only when `temurin-<x.y.z>+<build>` | no |
+| `package.json` `packageManager` | `pnpm` | exact; a `+sha512.…` suffix is ignored, other package managers are skipped | rewrites, dropping the hash, which names the old release |
+| nested `rust-toolchain.toml`, any `rust-toolchain` | `rust` | exact, like the root file: `1.99` is drift against `1.99.1`; named channels (`nightly`, `nightly-2026-01-01`, `stable`, `beta`) are listed as not checked; invalid TOML is drift | rewrites numeric channels |
+| `Dockerfile`, `Dockerfile.<name>`, `*.Dockerfile`, `Containerfile` | `node`, `python`, `go`, `ruby` | major.minor of official `node`, `python`, `golang`, `ruby` images | no, prints the drift |
 
 Exact matching keeps every place that installs a runtime on the version CI locks. That includes
 `.python-version`: `3.13` is drift against `3.13.18` on purpose, since pyenv and uv resolve it to whatever patch

@@ -628,6 +628,112 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.repo / "toolchains.toml").exists())
 
 
+class SyncVersionFilesTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.baseline = self.root / "baseline.toml"
+        self.baseline.write_text(BASELINE)
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+        self.write("mise.toml", '[tools]\nnode = "24.22.1"\n')
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def write(self, name: str, content: str) -> None:
+        path = self.repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content.encode())
+
+    def read(self, name: str) -> str:
+        return (self.repo / name).read_bytes().decode()
+
+    def invoke(self, command: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = toolchains.main([command, "--baseline", str(self.baseline), "--repo", str(self.repo)])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_sync_rewrites_single_version_files_then_check_passes(self) -> None:
+        files = {
+            ".nvmrc": ("v22.20.0\n", "v24.22.1\n"),
+            "web/.node-version": ("24\r\n", "24.22.1\r\n"),
+            ".python-version": ("# pyenv\n3.12.1  # main\n3.11.14\n", "# pyenv\n3.13.18  # main\n3.11.14\n"),
+            ".ruby-version": ("ruby-3.3.0\n", "ruby-3.4.7\n"),
+            "rust-toolchain.toml": ('[toolchain]\nchannel = "1.95.0"\n', '[toolchain]\nchannel = "1.99.1"\n'),
+            "e2e/rust-toolchain.toml": (
+                '[toolchain]\nchannel = "1.98"\ncomponents = ["clippy"]\n',
+                '[toolchain]\nchannel = "1.99.1"\ncomponents = ["clippy"]\n',
+            ),
+            "legacy/rust-toolchain": ("1.90.0\n", "1.99.1\n"),
+            "fuzz/rust-toolchain.toml": ('[toolchain]\nchannel = "nightly"\n', '[toolchain]\nchannel = "nightly"\n'),
+            "package.json": (
+                '{\n  "name": "x",\n  "packageManager": "pnpm@9.15.0+sha512.deadbeef"\n}\n',
+                '{\n  "name": "x",\n  "packageManager": "pnpm@10.4.1"\n}\n',
+            ),
+            "docs/package.json": (
+                '{"packageManager": "pnpm@10.4.1+sha512.keep"}',
+                '{"packageManager": "pnpm@10.4.1+sha512.keep"}',
+            ),
+            "Dockerfile": ("FROM node:20-slim\n", "FROM node:20-slim\n"),
+        }
+        for name, (before, _) in files.items():
+            self.write(name, before)
+
+        code, out, err = self.invoke("sync")
+
+        self.assertEqual((code, err), (0, ""))
+        for name, (_, after) in files.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.read(name), after)
+        self.assertIn(
+            "updated 7 version files: .nvmrc, .python-version, .ruby-version, e2e/rust-toolchain.toml, "
+            "legacy/rust-toolchain, package.json, web/.node-version",
+            out,
+        )
+        self.assertIn("updated 1 pins: rust", out)
+        self.assertIn(
+            "Dockerfile image tags are not rewritten; fix by hand: node: Dockerfile FROM node:20-slim names only a "
+            "major; pin 24.22",
+            out,
+        )
+
+        self.write("Dockerfile", "FROM node:24.22-slim\n")
+        code, _, err = self.invoke("check")
+        self.assertEqual(code, 0, err)
+
+    def test_sync_writes_the_override_version(self) -> None:
+        self.write("mise.toml", '[tools]\nnode = "22.20.0"\n')
+        self.write("toolchains.toml", '[overrides.node]\nversion = "22.20.0"\nreason = "engine floor test"\n')
+        self.write(".nvmrc", "24.22.1\n")
+
+        code, _, _ = self.invoke("sync")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.read(".nvmrc"), "22.20.0\n")
+
+    def test_sync_on_matching_files_writes_nothing(self) -> None:
+        self.write(".nvmrc", "24.22.1\n")
+        before = (self.repo / ".nvmrc").stat().st_mtime_ns
+
+        code, out, _ = self.invoke("sync")
+
+        self.assertEqual(code, 0)
+        self.assertNotIn("version files", out)
+        self.assertEqual((self.repo / ".nvmrc").stat().st_mtime_ns, before)
+
+    def test_failed_sync_leaves_version_files_alone(self) -> None:
+        self.write("mise.toml", '[tools.node]\nversion = "22.20.0"\n')
+        self.write(".nvmrc", "22.20.0\n")
+
+        code, _, err = self.invoke("sync")
+
+        self.assertEqual(code, 2)
+        self.assertIn("could not rewrite the pin for: node", err)
+        self.assertEqual(self.read(".nvmrc"), "22.20.0\n")
+
+
 class RealBaselineTest(unittest.TestCase):
     def test_repository_baseline_parses_and_lists_tools(self) -> None:
         baseline = Path(__file__).resolve().parent.parent / "baseline.toml"
