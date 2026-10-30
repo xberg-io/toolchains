@@ -62,7 +62,16 @@ class CheckTest(unittest.TestCase):
         self.assertIn("drift: node: mise.toml pins 22.20.0, baseline is 24.22.1", err)
 
     def test_pinned_ai_rulez_fails_in_any_spelling(self) -> None:
-        for name in ('"github:Goldziher/ai-rulez"', '"npm:ai-rulez"', '"aqua:Goldziher/ai-rulez"'):
+        spellings = (
+            '"github:Goldziher/ai-rulez"',
+            '"npm:ai-rulez"',
+            '"aqua:Goldziher/ai-rulez"',
+            '"github:Goldziher/ai-rulez[bin=ai-rulez]"',
+            '"npm:AI-Rulez"',
+            '"cargo:ai_rulez"',
+            '"go:github.com/Goldziher/ai-rulez/v5"',
+        )
+        for name in spellings:
             with self.subTest(name=name):
                 self.write("mise.toml", f'[tools]\nnode = "24.22.1"\n{name} = "5.9.3"\n')
 

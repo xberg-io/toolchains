@@ -641,12 +641,18 @@ def plan_task_sets(repo: Path, sets_dir: Path, ref: str | None, mise_text: str) 
     return expected, stale, mise_text
 
 
+def unpinned_key(name: str) -> str:
+    """`go:github.com/Goldziher/ai-rulez/v5`, `npm:AI_Rulez`, `github:Goldziher/ai-rulez[bin=x]` -> `ai-rulez`."""
+    bare = re.sub(r"\[[^\]]*\]$", "", name).lower().replace("_", "-")
+    return short_name(re.sub(r"/v\d+$", "", bare))
+
+
 def without_unpinned(pins: dict[str, Pin], report: Report) -> dict[str, Pin]:
     """Report every pin of a tool that must run unpinned, whatever backend spells it; return the other pins."""
     for name in sorted(pins):
-        if short_name(name) in UNPINNED:
-            report.errors.append(f"{name}: {short_name(name)} is never pinned; {UNPINNED[short_name(name)]}")
-    return {name: pin for name, pin in pins.items() if short_name(name) not in UNPINNED}
+        if unpinned_key(name) in UNPINNED:
+            report.errors.append(f"{name}: {unpinned_key(name)} is never pinned; {UNPINNED[unpinned_key(name)]}")
+    return {name: pin for name, pin in pins.items() if unpinned_key(name) not in UNPINNED}
 
 
 def check(baseline_path: Path, repo: Path, sets_dir: Path = SETS_DIR) -> Report:
