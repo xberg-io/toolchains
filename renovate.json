@@ -5,10 +5,20 @@
   "mise": {
     "managerFilePatterns": ["/(^|/)baseline\\.toml$/"]
   },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Task-set tool pins must equal baseline.toml (tests/test_task_sets.py), so they move in the baseline pull request",
+      "managerFilePatterns": ["/(^|/)task-sets/[^/]+\\.toml$/"],
+      "matchStrings": ["tools = \\{ node = \"(?<currentValue>[^\"]+)\" \\}"],
+      "depNameTemplate": "node",
+      "datasourceTemplate": "node-version"
+    }
+  ],
   "packageRules": [
     {
       "description": "One pull request per baseline bump",
-      "matchFileNames": ["baseline.toml"],
+      "matchFileNames": ["baseline.toml", "task-sets/*.toml"],
       "groupName": "baseline"
     },
     {
