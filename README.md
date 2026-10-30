@@ -54,8 +54,8 @@ python3 /tmp/toolchains/scripts/toolchains.py check --baseline /tmp/toolchains/b
 ```
 
 `mise lock` after `sync` is required, not optional: shared tasks can pin their own tools (`governance:check` and the
-`plugin` tasks run on a task-level `node = "26.12.1"`), and a lock without that version fails `--locked` CI with
-"No lockfile URL found for node@26.12.1". With `MISE_TASK_RUN_AUTO_INSTALL=false` and a stale lock, the task falls
+`plugin` tasks run on a task-level `node = "26.13.0"`), and a lock without that version fails `--locked` CI with
+"No lockfile URL found for node@26.13.0". With `MISE_TASK_RUN_AUTO_INSTALL=false` and a stale lock, the task falls
 back to whatever `node` is on PATH without a warning. `check` exits 1 when a committed `mise.lock` lacks a version a
 selected task pins.
 
