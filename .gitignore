@@ -14,6 +14,7 @@ mise.local.toml
 .claude/settings.json
 .claude/skills/
 .codex/agents/
+.codex/config.toml
 .mcp.json
 .opencode/agents/
 .opencode/commands/
