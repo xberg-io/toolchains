@@ -1,2 +1,2 @@
-baseline = "v1.9.0"
+baseline = "v1.12.0"
 task_sets = ["lint-format"]
