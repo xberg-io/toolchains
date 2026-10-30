@@ -33,10 +33,10 @@ class HooksInstallTest(unittest.TestCase):
             ["bash", str(HOOKS_INSTALL)], cwd=self.root, env=env, capture_output=True, text=True, check=False
         )
 
-    def test_writes_the_system_channel_when_preferences_are_missing(self) -> None:
+    def test_writes_the_npm_then_system_channels_when_preferences_are_missing(self) -> None:
         result = self._run()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.preferences.read_text(), '[hook_preferences]\nchannels = ["system"]\n')
+        self.assertEqual(self.preferences.read_text(), '[hook_preferences]\nchannels = ["npm", "system"]\n')
         self.assertEqual(self.calls.read_text(), "hooks install\n")
 
     def test_appends_the_table_after_other_preferences(self) -> None:
@@ -44,7 +44,7 @@ class HooksInstallTest(unittest.TestCase):
         result = self._run()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            self.preferences.read_text(), '[cache]\ndir = "x"\n\n[hook_preferences]\nchannels = ["system"]\n'
+            self.preferences.read_text(), '[cache]\ndir = "x"\n\n[hook_preferences]\nchannels = ["npm", "system"]\n'
         )
 
     def test_keeps_preferences_that_already_allow_system(self) -> None:
@@ -54,18 +54,32 @@ class HooksInstallTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.preferences.read_text(), text)
 
-    def test_rejects_preferences_without_system_even_if_another_table_has_it(self) -> None:
-        self.preferences.write_text('[hook_preferences]\nchannels = ["user"]\n[other]\nchannels = ["system"]\n')
+    def test_keeps_preferences_that_already_allow_npm(self) -> None:
+        text = '[hook_preferences]\nchannels = ["npm"]\n'
+        self.preferences.write_text(text)
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.preferences.read_text(), text)
+
+    def test_rejects_preferences_without_npm_or_system_even_if_another_table_has_them(self) -> None:
+        self.preferences.write_text('[hook_preferences]\nchannels = ["npx"]\n[other]\nchannels = ["npm", "system"]\n')
         result = self._run()
         self.assertEqual(result.returncode, 1)
-        self.assertIn('Add "system" to hook_preferences.channels', result.stderr)
+        self.assertIn('Add "npm" to hook_preferences.channels', result.stderr)
         self.assertFalse(self.calls.exists())
 
-    def test_fails_without_ai_rulez(self) -> None:
+    def test_installs_with_npx_and_no_ai_rulez(self) -> None:
+        (self.bin / "ai-rulez").unlink()
+        self._stub("npx", "")
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls.read_text(), "hooks install\n")
+
+    def test_fails_without_npx_or_ai_rulez(self) -> None:
         (self.bin / "ai-rulez").unlink()
         result = self._run()
         self.assertEqual(result.returncode, 1)
-        self.assertIn("ai-rulez is not on PATH", result.stderr)
+        self.assertIn("Neither npx nor ai-rulez is on PATH", result.stderr)
         self.assertFalse(self.calls.exists())
 
 
