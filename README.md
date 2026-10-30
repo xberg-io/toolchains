@@ -52,6 +52,12 @@ mise lock
 python3 /tmp/toolchains/scripts/toolchains.py check --baseline /tmp/toolchains/baseline.toml
 ```
 
+`mise lock` after `sync` is required, not optional: shared tasks can pin their own tools (`governance:check` and the
+`plugin` tasks run on a task-level `node = "26.12.1"`), and a lock without that version fails `--locked` CI with
+"No lockfile URL found for node@26.12.1". With `MISE_TASK_RUN_AUTO_INSTALL=false` and a stale lock, the task falls
+back to whatever `node` is on PATH without a warning. `check` exits 1 when a committed `mise.lock` lacks a version a
+selected task pins.
+
 `check` exits 1 on drift and 2 when nothing could be checked: a missing `mise.toml`, or no declared tool covered by
 the baseline. It lists the repository-owned tools it skipped. A pin of ai-rulez under any backend
 (`github:Goldziher/ai-rulez`, `npm:ai-rulez`) is drift: use `npx -y ai-rulez@latest` instead. It also exits 1 when

@@ -531,6 +531,24 @@ class CheckTaskSetsTest(TaskSetTestCase):
                 self.assertEqual((self.repo / name).stat().st_mode & 0o111, 0)
                 self.assert_check(0)
 
+    def test_lock_without_a_task_tool_version_is_drift(self) -> None:
+        (self.sets / "gamma.toml").write_text('["g:one"]\ntools = { node = "26.12.1" }\nrun = "node -v"\n')
+        self.select("alpha", "beta", "gamma")
+        self.synced()
+        self.assert_check(0)
+
+        self.write("mise.lock", '[[tools.node]]\nversion = "24.22.1"\nbackend = "core:node"\n')
+        self.assert_check(1, "drift: g:one: mise.lock lacks node 26.12.1, which the task's tools pin; run mise lock")
+
+        self.write("mise.lock", '[[tools.node]]\nversion = "24.22.1"\n\n[[tools.node]]\nversion = "26.12.1"\n')
+        self.assert_check(0)
+
+        self.select("alpha", "beta", "gamma", extra='[task_overrides]\n"g:one" = "runs another node"\n')
+        self.write("mise.toml", MISE + '\n[tasks."g:one"]\nrun = "true"\n')
+        self.write("mise.lock", "")
+        self.synced()
+        self.assert_check(0)
+
     def test_stale_override_is_drift(self) -> None:
         self.select("alpha", "beta", extra='[task_overrides]\n"a:one" = "was customised"\n')
         self.synced()

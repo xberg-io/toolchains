@@ -599,6 +599,25 @@ def check_task_sets(repo: Path, sets_dir: Path, report: Report) -> None:
     report.errors += [f"task set {name!r}: no such set in {sets_dir}" for name in unknown]
     check_shared_files(repo, expected_shared_files(sets, config, config.ref), report)
     check_task_names(repo, sets, config, report)
+    check_task_tool_locks(repo, sets, config, report)
+
+
+def check_task_tool_locks(repo: Path, sets: list[TaskSet], config: TaskConfig, report: Report) -> None:
+    """A committed mise.lock must hold every tool version a shipped task pins, or `--locked` CI cannot install it."""
+    path = repo / "mise.lock"
+    if not path.is_file():
+        return
+    locked = load_toml(path).get("tools", {})
+    for task_set in sets:
+        for task, entry in task_set.tasks.items():
+            tools = entry.get("tools", {}) if task not in config.overrides else {}
+            for tool, version in tools.items():
+                entries = locked.get(tool, [])
+                entries = [entries] if isinstance(entries, dict) else entries
+                if version not in {item.get("version") for item in entries if isinstance(item, dict)}:
+                    report.errors.append(
+                        f"{task}: mise.lock lacks {tool} {version}, which the task's tools pin; run mise lock"
+                    )
 
 
 def plan_task_sets(repo: Path, sets_dir: Path, ref: str | None, mise_text: str) -> tuple[dict, list[str], str]:
