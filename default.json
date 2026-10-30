@@ -13,6 +13,7 @@
         "dotnet",
         "gh",
         "github:DevinR528/cargo-sort",
+        "github:Goldziher/adrlint",
         "github:Goldziher/ai-rulez",
         "github:Goldziher/poly",
         "github:bnjbvr/cargo-machete",
