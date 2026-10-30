@@ -197,14 +197,20 @@ def baseline_key_for(name: str, baseline: dict[str, Pin]) -> str | None:
 
 
 def git(repo: Path, *args: str) -> str:
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout
+    """git's output; InputError when git fails, so a checkout git cannot read is never walked as plain files."""
+    try:
+        return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout
+    except subprocess.CalledProcessError as exc:
+        raise InputError(f"git cannot list the files of {repo}: {exc.stderr.strip()}") from exc
+    except OSError as exc:
+        raise InputError(f"git cannot list the files of {repo}: {exc}") from exc
 
 
 def is_checkout(repo: Path) -> bool:
-    try:
-        return Path(git(repo, "rev-parse", "--show-toplevel").strip()).resolve() == repo.resolve()
-    except (OSError, subprocess.CalledProcessError):
+    """True for a git checkout's root. A directory without `.git`, such as a `git archive` export, is not one."""
+    if not (repo / ".git").exists():
         return False
+    return Path(git(repo, "rev-parse", "--show-toplevel").strip()).resolve() == repo.resolve()
 
 
 def root_entries(repo: Path) -> list[str]:
@@ -229,22 +235,26 @@ def go_task_leftovers(repo: Path) -> list[str]:
 
 
 def repository_files(repo: Path) -> list[str]:
-    """Relative paths of the repository's own files outside VENDORED directories: tracked ones in a git
-    checkout, else every file on disk."""
+    """Relative paths of the repository's own files: tracked ones outside vendored directories in a git checkout,
+    else every file on disk outside vendored directories, build outputs and environments."""
+    skipped = version_files.VENDORED
     if is_checkout(repo):
         paths = [path for path in git(repo, "ls-files", "-z").split("\0") if path]
     else:
+        skipped = version_files.UNTRACKED
         paths = []
         for directory, subdirs, names in os.walk(repo):
-            subdirs[:] = sorted(name for name in subdirs if name not in version_files.VENDORED)
+            subdirs[:] = sorted(name for name in subdirs if name not in skipped)
             base = Path(directory).relative_to(repo)
             paths += [(base / name).as_posix() for name in sorted(names)]
-    vendored = version_files.VENDORED
-    return sorted(path for path in paths if not vendored & set(path.split("/")[:-1]) and (repo / path).is_file())
+    return sorted(path for path in paths if not skipped & set(path.split("/")[:-1]) and (repo / path).is_file())
 
 
-def check_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str, dict], report: Report) -> None:
-    """Version files mise does not read must state the tool's override, else its baseline version."""
+def expectations(
+    baseline: dict[str, Pin], overrides: dict[str, dict]
+) -> tuple[version_files.Wanted, version_files.KeyFor]:
+    """What version files must state: the tool's override, else its baseline version; and the baseline key a
+    tool name stands for."""
 
     def wanted(key: str) -> tuple[str, str] | None:
         if key in overrides:
@@ -256,7 +266,12 @@ def check_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[st
     def key_for(name: str) -> str | None:
         return name if name in baseline else baseline_key_for(name, baseline)
 
-    found = version_files.check(repo, repository_files(repo), wanted, key_for)
+    return wanted, key_for
+
+
+def check_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str, dict], report: Report) -> None:
+    """Version files mise does not read must state the tool's override, else its baseline version."""
+    found = version_files.check(repo, repository_files(repo), *expectations(baseline, overrides))
     report.errors += found.errors
     report.files += found.files
     report.unchecked_files += found.unchecked

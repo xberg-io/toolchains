@@ -3,7 +3,8 @@
 `.nvmrc`, `.node-version`, `.python-version`, `.ruby-version`, `.tool-versions`, nested `rust-toolchain.toml`,
 `rust-toolchain` and `package.json` `packageManager: pnpm@X` must state the expected version exactly. Dockerfile
 `FROM node|python|golang|ruby:<tag>` lines are compared on major.minor, since the official images publish patch
-tags after the release the baseline already follows.
+tags after the release the baseline already follows. `sync` rewrites every one of them except `.tool-versions`
+and Dockerfiles.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
 # Directories that hold installed or vendored code, never the repository's own version files.
 VENDORED = frozenset({".git", "node_modules", "vendor", "vendored", "third_party", "third-party"})
+# Build outputs and environments a directory that is not a git checkout may also hold.
+UNTRACKED = VENDORED | {".venv", "target", "dist", "build"}
 # Single-version files: the baseline key and the prefix the file may carry before the version.
 SINGLE = {
     ".nvmrc": ("node", "v"),
@@ -26,11 +29,20 @@ SINGLE = {
     ".python-version": ("python", ""),
     ".ruby-version": ("ruby", "ruby-"),
 }
-VERSION_FILES = frozenset({*SINGLE, ".tool-versions", "rust-toolchain", "rust-toolchain.toml", "package.json"})
-DOCKERFILE = re.compile(r"(?:Dockerfile|Containerfile)(?:\.[^/]+)?|[^/]+\.(?:Dockerfile|Containerfile)", re.IGNORECASE)
+RUST_FILES = ("rust-toolchain", "rust-toolchain.toml")
+VERSION_FILES = frozenset({*SINGLE, *RUST_FILES, ".tool-versions", "package.json"})
+DOCKERFILE = re.compile(r"(?:Dockerfile|Containerfile)(?:\.[^/.]+)?|[^/]+\.(?:Dockerfile|Containerfile)", re.IGNORECASE)
+# `Dockerfile.<x>` names that are a template or a document about one, not a Dockerfile.
+NOT_DOCKERFILE = frozenset({"j2", "jinja", "jinja2", "tmpl", "tpl", "template", "md", "txt"})
 # Official Docker Hub images and the baseline key their tag versions. ~keep
 DOCKER_IMAGES = {"node": "node", "python": "python", "golang": "go", "ruby": "ruby"}
 DOCKER_HUB = ("", "library", "docker.io", "docker.io/library", "index.docker.io/library")
+# A rust channel the baseline can stand for; named channels (nightly, stable, beta) are another toolchain.
+NUMERIC_CHANNEL = re.compile(r"\d+\.\d+(?:\.\d+)?")
+# .tool-versions values that name no version.
+NOT_A_VERSION = frozenset({"system", "lts", "latest"})
+TEMURIN = re.compile(r"temurin-\d+\.\d+\.\d+\+\S+")
+PACKAGE_MANAGER = re.compile(r'("packageManager"\s*:\s*"pnpm@)([^"+]*)((?:\+[^"]*)?)(")')
 
 # A baseline key to (expected version, how a message names it), or None when the baseline does not cover it.
 Wanted = Callable[[str], tuple[str, str] | None]
@@ -50,65 +62,103 @@ def read_text(path: Path) -> str:
     return path.read_bytes().decode("utf-8", errors="replace")
 
 
+def is_dockerfile(name: str) -> bool:
+    return bool(DOCKERFILE.fullmatch(name)) and name.rsplit(".", 1)[-1].lower() not in NOT_DOCKERFILE
+
+
 def first_value(text: str) -> str:
     """The first line that is neither blank nor a comment, stripped."""
     lines = (line.split("#", 1)[0].strip() for line in text.splitlines())
     return next((line for line in lines if line), "")
 
 
-def rust_channel(text: str) -> str:
-    """The channel of a rust-toolchain(.toml) file: TOML `[toolchain] channel`, or the legacy bare channel line."""
+def rust_channel(name: str, text: str) -> str | None:
+    """The channel of a rust-toolchain(.toml) file: TOML `[toolchain] channel`, or the legacy bare channel line.
+    None when a rust-toolchain.toml is not TOML."""
     try:
         toolchain = tomllib.loads(text).get("toolchain")
     except tomllib.TOMLDecodeError:
-        return first_value(text)
+        return None if name.endswith(".toml") else first_value(text)
     channel = toolchain.get("channel") if isinstance(toolchain, dict) else None
     return channel if isinstance(channel, str) else ""
 
 
-def tool_versions(text: str, key_for: KeyFor) -> list[tuple[str, str]]:
+def is_nested_rust(path: str) -> bool:
+    """A rust-toolchain file other than the root rust-toolchain.toml, which is checked with the mise pins."""
+    name = path.rsplit("/", 1)[-1]
+    return name == "rust-toolchain" or (name == "rust-toolchain.toml" and "/" in path)
+
+
+def tool_versions(path: str, text: str, key_for: KeyFor, found: Findings) -> list[tuple[str, str]]:
     pins = []
     for line in text.splitlines():
         fields = line.split("#", 1)[0].split()
         key = key_for(fields[0]) if len(fields) >= 2 else None
-        if key:
-            pins.append((key, fields[1]))
+        if not key or fields[1] in NOT_A_VERSION:
+            continue
+        if key == "java" and not TEMURIN.fullmatch(fields[1]):
+            found.unchecked.append(f"{path} (java {fields[1]})")
+            continue
+        pins.append((key, fields[1]))
     return pins
 
 
-def file_pins(path: str, text: str, key_for: KeyFor) -> list[tuple[str, str]]:
-    """(baseline key, version) for every version a non-Docker version file states."""
+def file_pins(path: str, text: str, key_for: KeyFor, found: Findings) -> list[tuple[str, str]]:
+    """(baseline key, version) for every version a non-Docker version file states that the check compares."""
     name = path.rsplit("/", 1)[-1]
     if name in SINGLE:
         key, prefix = SINGLE[name]
         return [(key, first_value(text).removeprefix(prefix))]
-    if name == "rust-toolchain" or (name == "rust-toolchain.toml" and "/" in path):
-        # The root rust-toolchain.toml is checked with the mise pins. ~keep
-        return [("rust", rust_channel(text))]
+    if is_nested_rust(path):
+        channel = rust_channel(name, text)
+        if channel is None:
+            found.errors.append(f"rust: {path} is unparseable TOML")
+        elif channel and not NUMERIC_CHANNEL.fullmatch(channel):
+            found.unchecked.append(f"{path} (channel {channel})")
+        else:
+            return [("rust", channel)]
+        return []
     if name == "package.json":
-        return [("pnpm", m.group(1)) for m in re.finditer(r'"packageManager"\s*:\s*"pnpm@([^"+]*)', text)]
+        return [("pnpm", m.group(2)) for m in PACKAGE_MANAGER.finditer(text)]
     if name == ".tool-versions":
-        return tool_versions(text, key_for)
+        return tool_versions(path, text, key_for, found)
     return []
 
 
 def resolve_args(value: str, args: dict[str, str]) -> str | None:
-    """value with `$NAME` and `${NAME}` replaced by Dockerfile ARG defaults, or None when one has no default."""
-    names = [a or b for a, b in re.findall(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)", value)]
-    if any(name not in args for name in names):
-        return None
-    return re.sub(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)", lambda m: args[m.group(1) or m.group(2)], value)
+    """value with `$NAME`, `${NAME}`, `${NAME:-x}` and `${NAME-x}` resolved from Dockerfile ARG defaults, or None
+    when one cannot be resolved."""
+    pattern = r"\$\{([A-Za-z_]\w*)(?:(:?-)([^}]*))?\}|\$\{[^}]*\}|\$([A-Za-z_]\w*)"
+    unresolved = False
+
+    def substitute(match: re.Match[str]) -> str:
+        nonlocal unresolved
+        name = match.group(1) or match.group(4)
+        if name is None:
+            unresolved = True
+            return ""
+        value = args.get(name)
+        if match.group(2) and (value is None or (match.group(2) == ":-" and not value)):
+            return match.group(3)
+        if value is None:
+            unresolved = True
+            return ""
+        return value
+
+    resolved = re.sub(pattern, substitute, value)
+    return None if unresolved else resolved
 
 
 def docker_images(text: str) -> list[tuple[str, str | None, str]]:
-    """(baseline key, tag or None when an ARG in it has no default, `image:tag` for messages) for each FROM line
-    that uses an official node, python, golang or ruby image. A missing tag is ""."""
+    """(baseline key, tag or None when an ARG in it cannot be resolved, `image:tag` for messages) for each FROM
+    line that uses an official node, python, golang or ruby image. A missing tag is ""."""
     args: dict[str, str] = {}
     images = []
     for line in text.splitlines():
-        arg = re.match(r"\s*ARG\s+([A-Za-z_]\w*)=(\S*)", line, re.IGNORECASE)
+        arg = re.match(r"\s*ARG\s+([A-Za-z_]\w*)(?:=(\S*))?", line, re.IGNORECASE)
         if arg:
-            args.setdefault(arg.group(1), arg.group(2).strip("\"'"))
+            if arg.group(2) is not None:
+                args.setdefault(arg.group(1), arg.group(2).strip("\"'"))
             continue
         source = re.match(r"\s*FROM\s+(?:--\S+\s+)*(\S+)", line, re.IGNORECASE)
         if not source:
@@ -168,11 +218,12 @@ def check(repo: Path, paths: list[str], wanted: Wanted, key_for: KeyFor) -> Find
     found = Findings()
     for path in paths:
         name = path.rsplit("/", 1)[-1]
-        if DOCKERFILE.fullmatch(name):
+        if is_dockerfile(name):
             compared = check_docker_file(path, read_text(repo / path), wanted, found)
         elif name in VERSION_FILES:
             where = f"{path} packageManager" if name == "package.json" else path
-            compared = check_pins(where, file_pins(path, read_text(repo / path), key_for), wanted, found)
+            pins = file_pins(path, read_text(repo / path), key_for, found)
+            compared = check_pins(where, pins, wanted, found)
         else:
             continue
         if compared:
