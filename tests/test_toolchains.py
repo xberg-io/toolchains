@@ -14,7 +14,10 @@ import toolchains  # noqa: E402
 BASELINE = """
 [tools]
 node = "24.22.1"
+pnpm = "10.4.1"
 python = "3.13.18"
+go = "1.25.3"
+ruby = "3.4.7"
 rust = "1.99.1"
 "github:nextest-rs/nextest" = { version = "0.9.149", version_prefix = "cargo-nextest-" }
 """
@@ -228,6 +231,186 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("drift: .task/: go-task leftover", err)
         self.assertIn("drift: Taskfile.yml: go-task leftover", err)
+
+
+class VersionFilesTest(unittest.TestCase):
+    """Version files mise does not read must agree with the baseline, or the repository's reasoned override."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.baseline = self.root / "baseline.toml"
+        self.baseline.write_text(BASELINE)
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+        self.write("mise.toml", '[tools]\nnode = "24.22.1"\n')
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def write(self, name: str, content: str) -> None:
+        path = self.repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+
+    def run_main(self) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = toolchains.main(["check", "--baseline", str(self.baseline), "--repo", str(self.repo)])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_matching_version_files_pass_and_are_listed(self) -> None:
+        files = {
+            ".nvmrc": "v24.22.1\n",
+            "docs/.node-version": "24.22.1",
+            ".python-version": "# pyenv\n3.13.18\n3.12.1\n",
+            ".ruby-version": "ruby-3.4.7\n",
+            ".tool-versions": "# asdf\nnodejs 24.22.1\ngolang 1.25.3\nterraform 1.5.0\n",
+            "package.json": '{"packageManager": "pnpm@10.4.1+sha512.abc"}',
+            "e2e/rust-toolchain.toml": '[toolchain]\nchannel = "1.99.1"\n',
+        }
+        for name, content in files.items():
+            self.write(name, content)
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertIn(f"checked {len(files)} version files: {', '.join(sorted(files))}", out)
+
+    def test_drifted_version_files_fail(self) -> None:
+        cases = {
+            ".nvmrc": ("22.20.0\n", "node: .nvmrc pins 22.20.0, baseline is 24.22.1"),
+            ".node-version": ("24\n", "node: .node-version pins 24, baseline is 24.22.1"),
+            ".python-version": ("3.13\n", "python: .python-version pins 3.13, baseline is 3.13.18"),
+            ".ruby-version": ("3.3.0", "ruby: .ruby-version pins 3.3.0, baseline is 3.4.7"),
+            ".tool-versions": ("nodejs 22.20.0\n", "node: .tool-versions pins 22.20.0, baseline is 24.22.1"),
+            "web/package.json": (
+                '{\n  "packageManager": "pnpm@9.15.0"\n}\n',
+                "pnpm: web/package.json packageManager pins 9.15.0, baseline is 10.4.1",
+            ),
+            "e2e/rust-toolchain.toml": (
+                '[toolchain]\nchannel = "1.99"\n',
+                "rust: e2e/rust-toolchain.toml pins 1.99, baseline is 1.99.1",
+            ),
+            "rust-toolchain": ("1.95.0\n", "rust: rust-toolchain pins 1.95.0, baseline is 1.99.1"),
+        }
+        for name, (content, expected) in cases.items():
+            with self.subTest(name=name):
+                self.write(name, content)
+
+                code, _, err = self.run_main()
+
+                (self.repo / name).unlink()
+                self.assertEqual(code, 1)
+                self.assertIn(f"drift: {expected}", err)
+
+    def test_version_file_without_a_version_is_drift(self) -> None:
+        cases = {
+            ".nvmrc": ("\n", "node: .nvmrc names no version, baseline is 24.22.1"),
+            "e2e/rust-toolchain.toml": (
+                '[toolchain]\ncomponents = ["clippy"]\n',
+                "rust: e2e/rust-toolchain.toml names no version, baseline is 1.99.1",
+            ),
+        }
+        for name, (content, expected) in cases.items():
+            with self.subTest(name=name):
+                self.write(name, content)
+
+                code, _, err = self.run_main()
+
+                (self.repo / name).unlink()
+                self.assertEqual(code, 1)
+                self.assertIn(f"drift: {expected}", err)
+
+    def test_override_applies_to_version_files(self) -> None:
+        self.write("mise.toml", '[tools]\nnode = "22.20.0"\n')
+        self.write("toolchains.toml", '[overrides.node]\nversion = "22.20.0"\nreason = "engine floor test"\n')
+        self.write(".nvmrc", "22.20.0\n")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+
+        self.write(".nvmrc", "24.22.1\n")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn("drift: node: .nvmrc pins 24.22.1, toolchains.toml override is 22.20.0", err)
+
+    def test_vendored_and_installed_directories_are_skipped(self) -> None:
+        self.write("node_modules/dep/package.json", '{"packageManager": "pnpm@8.0.0"}')
+        self.write("vendor/lib/.nvmrc", "18\n")
+        self.write("third_party/x/Dockerfile", "FROM node:18\n")
+        self.write("package.json", '{"packageManager": "yarn@4.0.0"}')
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("version files", out)
+
+    def test_git_checkout_reads_tracked_files_only(self) -> None:
+        subprocess.run(["git", "-C", str(self.repo), "init", "-q"], check=True)
+        self.write(".nvmrc", "18\n")
+        self.write(".python-version", "3.13.18\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "mise.toml", ".python-version"], check=True)
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertIn("checked 1 version files: .python-version", out)
+
+    def test_version_files_alone_count_as_checked(self) -> None:
+        self.write("mise.toml", '[tools]\nlocal-only = "1.0"\n')
+        self.write(".nvmrc", "24.22.1\n")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+
+    def test_dockerfile_tags_match_on_major_minor(self) -> None:
+        self.write(
+            "Dockerfile",
+            "ARG PY=3.13\n"
+            "FROM --platform=$BUILDPLATFORM node:24.22-slim AS web\n"
+            "FROM docker.io/library/python:${PY}-slim-bookworm AS build\n"
+            "from golang:1.25.0-alpine@sha256:abc\n"
+            "FROM ruby:3.4\n"
+            "FROM web\n"
+            "FROM ghcr.io/acme/node:12\n"
+            "FROM debian:bookworm\n",
+        )
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertIn("checked 1 version files: Dockerfile", out)
+
+    def test_drifted_dockerfile_tags_fail(self) -> None:
+        cases = {
+            "FROM golang:1.24-alpine\n": "go: Dockerfile FROM golang:1.24-alpine is 1.24, baseline is 1.25.3",
+            "FROM node:24\n": "node: Dockerfile FROM node:24 names only a major; pin 24.22",
+            "FROM node\n": "node: Dockerfile FROM node has no version tag; pin 24.22",
+            "FROM python:latest\n": "python: Dockerfile FROM python:latest has no version tag; pin 3.13",
+            "ARG V=3.3\nFROM ruby:$V-slim\n": "ruby: Dockerfile FROM ruby:3.3-slim is 3.3, baseline is 3.4.7",
+        }
+        for content, expected in cases.items():
+            with self.subTest(content=content):
+                self.write("docker/app.Dockerfile", content)
+
+                code, _, err = self.run_main()
+
+                self.assertEqual(code, 1)
+                self.assertIn(f"drift: {expected.replace('Dockerfile FROM', 'docker/app.Dockerfile FROM')}", err)
+
+    def test_unresolved_dockerfile_tag_is_reported_not_passed(self) -> None:
+        self.write("Containerfile", "ARG NODE_VERSION\nFROM node:${NODE_VERSION}-slim\n")
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertIn("version files not checked: Containerfile (node:${NODE_VERSION}-slim)", out)
+        self.assertNotIn("checked 1 version files", out)
 
 
 class SyncTest(unittest.TestCase):
