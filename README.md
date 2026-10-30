@@ -59,12 +59,33 @@ python3 /tmp/toolchains/scripts/toolchains.py check --baseline /tmp/toolchains/b
 back to whatever `node` is on PATH without a warning. `check` exits 1 when a committed `mise.lock` lacks a version a
 selected task pins.
 
-`check` exits 1 on drift and 2 when nothing could be checked: a missing `mise.toml`, or no declared tool covered by
-the baseline. It lists the repository-owned tools it skipped. A pin of ai-rulez under any backend
+`check` exits 1 on drift and 2 when nothing could be checked: a missing `mise.toml`, or neither a declared tool nor
+a version file covered by the baseline. It lists the repository-owned tools it skipped. A pin of ai-rulez under any backend
 (`github:Goldziher/ai-rulez`, `npm:ai-rulez`) is drift: use `npx -y ai-rulez@latest` instead. It also exits 1 when
 the repository root still holds go-task files, since the org runs its tasks with mise: a `Taskfile.yml`,
 `Taskfile.yaml`, `Taskfile.dist.yml` or `Taskfile.dist.yaml` in any letter case, or a `.task/` directory. In a git
 checkout only tracked files count, so an ignored `.task/` cache passes; elsewhere the files on disk are checked.
+
+Version files mise does not read must agree with the baseline as well, or with the tool's override in
+`toolchains.toml`, anywhere in the repository except `node_modules`, `vendor`, `vendored`, `third_party` and
+`third-party` directories (tracked files only in a git checkout). `check` lists the files it compared, and exits 1
+when one disagrees:
+
+| File | Compared with | Match |
+|---|---|---|
+| `.nvmrc`, `.node-version` | `node` | exact; a leading `v` is ignored, a bare major (`26`) or `lts/*` is drift |
+| `.python-version` | `python` | exact, first version line |
+| `.ruby-version` | `ruby` | exact; a `ruby-` prefix is ignored |
+| `.tool-versions` | each baseline tool it names (`nodejs`, `golang` included) | exact, first version |
+| `package.json` `packageManager` | `pnpm` | exact; a `+sha512.…` suffix is ignored, other package managers are skipped |
+| nested `rust-toolchain.toml`, any `rust-toolchain` | `rust` | exact, like the root file: `1.99` is drift against `1.99.1` |
+| `Dockerfile`, `*.Dockerfile`, `Dockerfile.*`, `Containerfile` | `node`, `python`, `go`, `ruby` | major.minor of official `node`, `python`, `golang`, `ruby` images |
+
+Exact matching keeps every place that installs a runtime on the version CI locks. Dockerfile tags are compared on
+major.minor only, because the official images publish patch tags after the release the baseline already follows:
+`FROM node:26.13-slim` and `FROM node:26.13.1` pass against `26.13.0`; `FROM node:26`, `node:latest` and an untagged
+`node` are drift. An `ARG` default in the same file resolves a `${VAR}` tag; a tag that still names an argument
+without a default is listed as not checked. Other registries (`ghcr.io/…/node`) and other images are not compared.
 `sync` writes nothing when any pin cannot be rewritten (for example a `[tools.node]` subtable) or when table options
 differ from the baseline; fix those by hand.
 

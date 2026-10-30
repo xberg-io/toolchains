@@ -5,7 +5,10 @@
 declares that the baseline also lists must use the baseline version, unless toolchains.toml records an
 override with a reason. Pinning ai-rulez, which always runs at its newest release, is drift. It also fails
 when the repository root holds a go-task Taskfile or `.task/` directory, since mise runs the org's tasks.
-Exits 0 when consistent, 1 on drift, 2 on unusable input.
+Version files mise does not read must agree too: `.nvmrc`, `.node-version`, `.python-version`, `.ruby-version`,
+`.tool-versions`, nested `rust-toolchain.toml` and `rust-toolchain`, `package.json` `packageManager: pnpm@X`
+and Dockerfile `FROM node|python|golang|ruby:<tag>` (major.minor only). Exits 0 when consistent, 1 on drift,
+2 on unusable input or when nothing was checked.
 
 `sync` rewrites those pins to the baseline versions in place, skipping overridden tools, and records the
 baseline ref in toolchains.toml. It edits matching lines only, so comments and layout survive.
@@ -28,6 +31,8 @@ import tempfile
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import version_files
 
 RUST = "rust"
 # Registry aliases mise accepts for a baseline tool under another name.
@@ -61,6 +66,8 @@ class Report:
     unchecked: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     tasks: list[str] = field(default_factory=list)
+    files: list[str] = field(default_factory=list)
+    unchecked_files: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -191,13 +198,16 @@ def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout
 
 
+def is_checkout(repo: Path) -> bool:
+    try:
+        return Path(git(repo, "rev-parse", "--show-toplevel").strip()).resolve() == repo.resolve()
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
 def root_entries(repo: Path) -> list[str]:
     """Names at the repository root, a directory as `name/`: the tracked ones in a git checkout, else on disk."""
-    try:
-        is_checkout = Path(git(repo, "rev-parse", "--show-toplevel").strip()).resolve() == repo.resolve()
-    except (OSError, subprocess.CalledProcessError):
-        is_checkout = False
-    if not is_checkout:
+    if not is_checkout(repo):
         return sorted(f"{entry.name}/" if entry.is_dir() else entry.name for entry in repo.iterdir())
     names = set()
     for path in git(repo, "ls-files", "-z").split("\0"):
@@ -214,6 +224,40 @@ def go_task_leftovers(repo: Path) -> list[str]:
         for name in root_entries(repo)
         if name == f"{TASK_DIR}/" or (not name.endswith("/") and TASKFILE.fullmatch(name))
     ]
+
+
+def repository_files(repo: Path) -> list[str]:
+    """Relative paths of the repository's own files outside VENDORED directories: tracked ones in a git
+    checkout, else every file on disk."""
+    if is_checkout(repo):
+        paths = [path for path in git(repo, "ls-files", "-z").split("\0") if path]
+    else:
+        paths = []
+        for directory, subdirs, names in os.walk(repo):
+            subdirs[:] = sorted(name for name in subdirs if name not in version_files.VENDORED)
+            base = Path(directory).relative_to(repo)
+            paths += [(base / name).as_posix() for name in sorted(names)]
+    vendored = version_files.VENDORED
+    return sorted(path for path in paths if not vendored & set(path.split("/")[:-1]) and (repo / path).is_file())
+
+
+def check_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str, dict], report: Report) -> None:
+    """Version files mise does not read must state the tool's override, else its baseline version."""
+
+    def wanted(key: str) -> tuple[str, str] | None:
+        if key in overrides:
+            return overrides[key]["version"], f"toolchains.toml override is {overrides[key]['version']}"
+        if key in baseline:
+            return baseline[key].version, f"baseline is {baseline[key].version}"
+        return None
+
+    def key_for(name: str) -> str | None:
+        return name if name in baseline else baseline_key_for(name, baseline)
+
+    found = version_files.check(repo, repository_files(repo), wanted, key_for)
+    report.errors += found.errors
+    report.files += found.files
+    report.unchecked_files += found.unchecked
 
 
 @dataclass(frozen=True)
@@ -695,6 +739,7 @@ def check(baseline_path: Path, repo: Path, sets_dir: Path = SETS_DIR) -> Report:
         f"{name}: go-task leftover; tasks run with mise now, so port it to mise.toml or mise-tasks/ and delete it"
         for name in go_task_leftovers(repo)
     ]
+    check_version_files(repo, baseline, overrides, report)
     check_task_sets(repo, sets_dir, report)
     return report
 
@@ -827,12 +872,20 @@ def run_check(args: argparse.Namespace) -> int:
     report = check(args.baseline, args.repo, args.sets_dir)
     for error in report.errors:
         print(f"drift: {error}", file=sys.stderr)
-    if not report.checked:
-        print("error: no tool in the repository is covered by the baseline; nothing was checked", file=sys.stderr)
+    if not report.checked and not report.files:
+        print(
+            "error: no tool or version file in the repository is covered by the baseline; nothing was checked",
+            file=sys.stderr,
+        )
         return 2
-    print(f"checked {len(report.checked)} tools against the baseline: {', '.join(report.checked)}")
+    if report.checked:
+        print(f"checked {len(report.checked)} tools against the baseline: {', '.join(report.checked)}")
     if report.unchecked:
         print(f"repository-owned, not in the baseline: {', '.join(report.unchecked)}")
+    if report.files:
+        print(f"checked {len(report.files)} version files: {', '.join(report.files)}")
+    if report.unchecked_files:
+        print(f"version files not checked: {', '.join(report.unchecked_files)}")
     if report.tasks:
         print(f"checked {len(report.tasks)} shared tasks: {', '.join(report.tasks)}")
     return 1 if report.errors else 0
