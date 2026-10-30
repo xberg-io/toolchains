@@ -259,6 +259,20 @@ class VersionFilesTest(unittest.TestCase):
             code = toolchains.main(["check", "--baseline", str(self.baseline), "--repo", str(self.repo)])
         return code, out.getvalue(), err.getvalue()
 
+    def test_isolated_interpreter_runs_the_script(self) -> None:
+        script = Path(toolchains.__file__).resolve()
+        self.write(".nvmrc", "18\n")
+
+        result = subprocess.run(
+            [sys.executable, "-I", str(script), "check", "--baseline", str(self.baseline), "--repo", str(self.repo)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("drift: node: .nvmrc pins 18, baseline is 24.22.1", result.stderr)
+
     def test_matching_version_files_pass_and_are_listed(self) -> None:
         files = {
             ".nvmrc": "v24.22.1\n",
