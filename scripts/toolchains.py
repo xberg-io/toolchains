@@ -32,7 +32,9 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import version_files
+# `python -I` leaves the script's directory off sys.path; the sibling module must load anyway. ~keep
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import version_files  # noqa: E402
 
 RUST = "rust"
 # Registry aliases mise accepts for a baseline tool under another name.
