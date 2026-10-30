@@ -6,6 +6,9 @@
 #
 # Tools that must match a repository's own lockfile (wasm-bindgen-cli against Cargo.lock) are repo-owned and
 # deliberately absent.
+#
+# ai-rulez is never pinned: every invocation runs the newest release with `npx -y ai-rulez@latest`, on the
+# baseline's node.
 
 [tools]
 # Runtimes
@@ -24,7 +27,6 @@ rust = "1.99.1"
 
 # Org CLIs
 "github:Goldziher/poly" = "0.31.2"
-"github:Goldziher/ai-rulez" = "5.9.3"
 "github:Goldziher/adrlint" = "0.4.0"
 "github:xberg-io/alef" = "0.115.6"
 

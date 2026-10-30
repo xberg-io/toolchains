@@ -40,6 +40,9 @@ Only `mise.toml` is read; profile files such as `mise.ci.toml` are not checked.
 Tools the baseline does not list (for example `wasm-bindgen-cli`, which must match `Cargo.lock`) are owned by the
 repository. Renovate updates them when the repository extends `github>xberg-io/toolchains`.
 
+ai-rulez is not pinned anywhere: tasks run `npx -y ai-rulez@latest`, which needs the baseline's `node`. For the poly
+hooks, which call `ai-rulez` from PATH, install it with `npm install -g ai-rulez@latest`.
+
 ## Moving to a new baseline
 
 ```sh
