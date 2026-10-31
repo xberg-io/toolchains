@@ -14,6 +14,7 @@
         "gh",
         "github:DevinR528/cargo-sort",
         "github:Goldziher/adrlint",
+        "github:Goldziher/gh-actions-updater",
         "github:Goldziher/poly",
         "github:bnjbvr/cargo-machete",
         "github:nextest-rs/nextest",
