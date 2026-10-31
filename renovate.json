@@ -39,8 +39,9 @@
       "extractVersion": "^cargo-nextest-(?<version>.+)$"
     },
     {
+      "description": "gh-actions-updater owns every uses: ref, pinned to its bare major tag (org ADR-0008)",
       "matchManagers": ["github-actions"],
-      "groupName": "github actions"
+      "enabled": false
     }
   ]
 }

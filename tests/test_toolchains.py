@@ -755,6 +755,19 @@ class RealBaselineTest(unittest.TestCase):
         self.assertEqual(len(disabled), 1)
         self.assertEqual(set(disabled[0]["matchDepNames"]), baseline)
 
+    def test_renovate_configs_leave_action_refs_to_gh_actions_updater(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+
+        for name in ("default.json", "renovate.json"):
+            with self.subTest(config=name):
+                rules = json.loads((root / name).read_text())["packageRules"]
+                actions = [rule for rule in rules if "github-actions" in rule.get("matchManagers", [])]
+
+                self.assertEqual(len(actions), 1)
+                self.assertEqual(actions[0]["matchManagers"], ["github-actions"])
+                self.assertIs(actions[0].get("enabled"), False)
+                self.assertEqual(set(actions[0]) - {"description"}, {"matchManagers", "enabled"})
+
 
 if __name__ == "__main__":
     unittest.main()

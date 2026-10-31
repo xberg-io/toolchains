@@ -48,6 +48,11 @@
       "description": "Group the repository's own mise tools",
       "matchManagers": ["mise"],
       "groupName": "repo toolchain"
+    },
+    {
+      "description": "gh-actions-updater owns every uses: ref, pinned to its bare major tag (org ADR-0008)",
+      "matchManagers": ["github-actions"],
+      "enabled": false
     }
   ]
 }
