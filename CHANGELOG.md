@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- gh-actions-updater 0.4.0: `--lint-pins`, the major-pin hooks and the npm channel.
+
 ## [1.12.4] - 2026-11-01
 
 ### Fixed

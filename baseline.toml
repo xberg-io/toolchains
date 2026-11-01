@@ -29,7 +29,7 @@ rust = "1.99.1"
 "github:Goldziher/poly" = "0.32.1"
 "github:Goldziher/adrlint" = "0.4.1"
 "github:xberg-io/alef" = "0.115.10"
-"github:Goldziher/gh-actions-updater" = "0.3.1"
+"github:Goldziher/gh-actions-updater" = "0.4.0"
 
 # Rust tooling
 sccache = "0.19.0"
