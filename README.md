@@ -35,7 +35,10 @@ version = "0.28.4"
 reason = "example: hold the previous release until a regression fix ships"
 ```
 
-Only `mise.toml` is read; profile files such as `mise.ci.toml` are not checked.
+Only `mise.toml` is read; profile files such as `mise.ci.toml` are not checked. A task's own `tools` pin of a
+baseline tool in `mise.toml` (`tools = { node = "26.13.0" }` under `[tasks.setup]`, or a `[tasks.setup.tools]`
+table) must state the override, else the baseline version, too; `sync` moves it, and fails without writing for
+any other spelling.
 
 Tools the baseline does not list (for example `wasm-bindgen-cli`, which must match `Cargo.lock`) are owned by the
 repository. Renovate updates them when the repository extends `github>xberg-io/toolchains`.

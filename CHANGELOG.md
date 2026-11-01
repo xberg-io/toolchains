@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- `check` reports, and `sync` moves, a baseline tool's version pinned in a mise.toml task's `tools`.
 - `sync` recomputes a `packageManager` `+sha512.<hex>` suffix for the new pnpm release instead of dropping it.
 
 ## [1.13.0] - 2026-11-01

@@ -722,6 +722,113 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.repo / "toolchains.toml").exists())
 
 
+class TaskToolPinsTest(unittest.TestCase):
+    """A mise.toml task's `tools` pin of a baseline tool must agree with the override, else the baseline."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.baseline = self.root / "baseline.toml"
+        self.baseline.write_text(BASELINE)
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def write(self, name: str, content: str) -> None:
+        (self.repo / name).write_bytes(content.encode())
+
+    def read(self, name: str) -> str:
+        return (self.repo / name).read_bytes().decode()
+
+    def invoke(self, command: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = toolchains.main([command, "--baseline", str(self.baseline), "--repo", str(self.repo)])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_check_reports_a_stale_task_tool_pin(self) -> None:
+        self.write(
+            "mise.toml",
+            '[tools]\nnode = "24.22.1"\n\n[tasks.setup]\ntools = { node = "26.12.1", local-only = "1.0" }\nrun = "x"\n'
+            '\n[tasks."lint:py".tools]\n"python" = "3.12.1"\n',
+        )
+
+        code, _, err = self.invoke("check")
+
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            err.splitlines(),
+            [
+                "drift: python: mise.toml [tasks.lint:py] tools pins 3.12.1, baseline is 3.13.18",
+                "drift: node: mise.toml [tasks.setup] tools pins 26.12.1, baseline is 24.22.1",
+            ],
+        )
+
+    def test_check_compares_a_task_tool_pin_with_the_override(self) -> None:
+        self.write("mise.toml", '[tools]\nnode = "22.20.0"\n\n[tasks.setup]\ntools = { node = "24.22.1" }\n')
+        self.write("toolchains.toml", '[overrides.node]\nversion = "22.20.0"\nreason = "engine floor test"\n')
+
+        code, _, err = self.invoke("check")
+
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "drift: node: mise.toml [tasks.setup] tools pins 24.22.1, toolchains.toml override is 22.20.0", err
+        )
+
+    def test_override_used_only_by_a_task_tool_pin_is_not_unused(self) -> None:
+        self.write("mise.toml", '[tools]\npython = "3.13.18"\n\n[tasks.setup]\ntools = { node = "22.20.0" }\n')
+        self.write("toolchains.toml", '[overrides.node]\nversion = "22.20.0"\nreason = "engine floor test"\n')
+
+        code, _, err = self.invoke("check")
+
+        self.assertEqual((code, err), (0, ""))
+
+    def test_sync_moves_task_tool_pins_then_check_passes(self) -> None:
+        self.write(
+            "mise.toml",
+            '[tools]\r\nnode = "24.22.1"\r\n\r\n[tasks.setup]\r\ndescription = "x"\r\n'
+            "tools = { 'node' = '26.12.1', local-only = \"1.0\" }  # npx\r\nrun = [\r\n  \"mise install\",\r\n]\r\n"
+            '\r\n[tasks.other]\r\ntools = { node = "24.22.1" }\r\n'
+            '\r\n[tasks."lint:py".tools]\r\npython = "3.12.1"\r\n',
+        )
+
+        code, out, err = self.invoke("sync")
+
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out.strip(), "updated 2 pins: node ([tasks.setup]), python ([tasks.lint:py])")
+        self.assertEqual(
+            self.read("mise.toml"),
+            '[tools]\r\nnode = "24.22.1"\r\n\r\n[tasks.setup]\r\ndescription = "x"\r\n'
+            "tools = { 'node' = '24.22.1', local-only = \"1.0\" }  # npx\r\nrun = [\r\n  \"mise install\",\r\n]\r\n"
+            '\r\n[tasks.other]\r\ntools = { node = "24.22.1" }\r\n'
+            '\r\n[tasks."lint:py".tools]\r\npython = "3.13.18"\r\n',
+        )
+        self.assertEqual(self.invoke("check")[0], 0)
+
+    def test_sync_moves_a_task_tool_pin_to_the_override(self) -> None:
+        self.write("mise.toml", '[tools]\nnode = "22.20.0"\n\n[tasks.setup]\ntools = { node = "26.12.1" }\n')
+        self.write("toolchains.toml", '[overrides.node]\nversion = "22.20.0"\nreason = "engine floor test"\n')
+
+        code, _, err = self.invoke("sync")
+
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(
+            self.read("mise.toml"), '[tools]\nnode = "22.20.0"\n\n[tasks.setup]\ntools = { node = "22.20.0" }\n'
+        )
+
+    def test_unrewritable_task_tool_pin_fails_and_writes_nothing(self) -> None:
+        original = '[tools]\nnode = "22.20.0"\n\n[tasks.setup]\ntools.node = "26.12.1"\n'
+        self.write("mise.toml", original)
+
+        code, _, err = self.invoke("sync")
+
+        self.assertEqual(code, 2)
+        self.assertIn("could not rewrite the task tool pin for: [tasks.setup] node", err)
+        self.assertEqual(self.read("mise.toml"), original)
+
+
 class SyncVersionFilesTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

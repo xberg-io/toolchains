@@ -8,13 +8,14 @@ when the repository root holds a go-task Taskfile or `.task/` directory, since m
 Version files mise does not read must agree too: `.nvmrc`, `.node-version`, `.python-version`, `.ruby-version`,
 `.tool-versions`, nested `rust-toolchain.toml` and `rust-toolchain`, `package.json` `packageManager: pnpm@X`
 and Dockerfile `FROM node|python|golang|ruby:<tag>` (major.minor only), except the paths toolchains.toml
-`file_overrides` exempts with a reason. Exits 0 when consistent, 1 on drift, 2 on unusable input or when nothing
-was checked.
+`file_overrides` exempts with a reason. A mise.toml task's `tools` pin of a baseline tool must agree too.
+Exits 0 when consistent, 1 on drift, 2 on unusable input or when nothing was checked.
 
-`sync` rewrites those pins to the baseline versions in place, skipping overridden tools, moves the version files
-above except `.tool-versions` and Dockerfiles to the baseline or override, and records the baseline ref in
-toolchains.toml. It edits matching lines only, so comments and layout survive. A `packageManager` value with a
-`+sha512.<hex>` suffix gets the new release's hash from the npm registry; sync fails when it cannot read it.
+`sync` rewrites those pins to the baseline versions in place, skipping overridden tools, moves task `tools` pins
+and the version files above except `.tool-versions` and Dockerfiles to the baseline or override, and records the
+baseline ref in toolchains.toml. It edits matching lines only, so comments and layout survive. A `packageManager`
+value with a `+sha512.<hex>` suffix gets the new release's hash from the npm registry; sync fails when it cannot
+read it.
 
 Task sets: toolchains.toml `task_sets` names sets under task-sets/. `sync` writes their tasks to
 mise-tasks/shared.toml, copies their file tasks to mise-tasks/.shared/ and adds both to mise.toml's
@@ -767,6 +768,33 @@ def override_error(name: str, override: dict, expected: Pin, pin: Pin | None) ->
     return None
 
 
+def task_tool_pins(repo: Path) -> list[tuple[str, str, str]]:
+    """(task, tool, version) for every tool a mise.toml [tasks.<name>] pins in its `tools` table."""
+    tasks = load_toml(repo / "mise.toml").get("tasks", {})
+    pins = []
+    for task, entry in tasks.items():
+        tools = entry.get("tools", {}) if isinstance(entry, dict) else {}
+        for tool, value in tools.items() if isinstance(tools, dict) else ():
+            pins.append((task, tool, version_of(value, f"mise.toml [tasks.{task}] tools.{tool}")))
+    return pins
+
+
+def task_tool_drift(repo: Path, baseline: dict[str, Pin], overrides: dict[str, dict]) -> tuple[dict, set[str]]:
+    """Map (task, tool) to (pinned, expected version, how a message names it) for every task tool pin that differs
+    from its override, else its baseline version; and the baseline keys task tools pin."""
+    wanted, key_for = expectations(baseline, overrides)
+    drift, keys = {}, set()
+    for task, tool, version in task_tool_pins(repo):
+        key = key_for(tool)
+        expected = wanted(key) if key else None
+        if expected is None:
+            continue
+        keys.add(key)
+        if version != expected[0]:
+            drift[task, tool] = (version, *expected)
+    return drift, keys
+
+
 def check_tool_overrides(
     pins: dict[str, Pin], version_pins: set[str], baseline: dict[str, Pin], overrides: dict[str, dict], report: Report
 ) -> None:
@@ -803,7 +831,10 @@ def check(baseline_path: Path, repo: Path, sets_dir: Path = SETS_DIR) -> Report:
             report.errors.append(f"{name}: {pin.source} pins {pin.version}, baseline is {expected.version}")
 
     version_pins = check_version_files(repo, baseline, overrides, report)
-    check_tool_overrides(pins, version_pins, baseline, overrides, report)
+    drift, task_keys = task_tool_drift(repo, baseline, overrides)
+    for (task, tool), (version, _, label) in sorted(drift.items()):
+        report.errors.append(f"{tool}: mise.toml [tasks.{task}] tools pins {version}, {label}")
+    check_tool_overrides(pins, version_pins | task_keys, baseline, overrides, report)
     report.errors += [
         f"{name}: go-task leftover; tasks run with mise now, so port it to mise.toml or mise-tasks/ and delete it"
         for name in go_task_leftovers(repo)
@@ -812,10 +843,15 @@ def check(baseline_path: Path, repo: Path, sets_dir: Path = SETS_DIR) -> Report:
     return report
 
 
+def toml_key(name: str) -> str:
+    """A pattern for name as a TOML key: quoted either way, or bare when TOML allows it."""
+    quoted = f"\"{re.escape(name)}\"|'{re.escape(name)}'"
+    return f"(?:{quoted}|{re.escape(name)})" if re.fullmatch(r"[A-Za-z0-9_-]+", name) else f"(?:{quoted})"
+
+
 def tool_line_pattern(name: str) -> re.Pattern[str]:
     """Match a [tools] entry's default version: `name = "v"`, `name = ["v", ...]` or `name = { version = "v" }`."""
-    quoted = f"\"{re.escape(name)}\"|'{re.escape(name)}'"
-    key = f"(?:{quoted}|{re.escape(name)})" if re.fullmatch(r"[A-Za-z0-9_-]+", name) else f"(?:{quoted})"
+    key = toml_key(name)
     prefix = r"(?:\[\s*|\{[^}]*?(?<![\w-])version\s*=\s*)?"
     return re.compile(rf"""^(\s*{key}\s*=\s*{prefix}(["']))(.*?)(\2)""", re.MULTILINE)
 
@@ -836,6 +872,58 @@ def rewrite_tools_section(text: str, updates: dict[str, str]) -> tuple[str, list
             section = pattern.sub(lambda m, new=version: f"{m.group(1)}{new}{m.group(4)}", section, count=1)
             changed.append(name)
     return text[:start] + section + text[end:], changed
+
+
+def table_path(header: str) -> list[str]:
+    """`[tasks."lint:rust".tools]` -> ["tasks", "lint:rust", "tools"]."""
+    node, path = parse_toml(header, f"mise.toml: table header {header!r}"), []
+    while isinstance(node, dict) and len(node) == 1:
+        key = next(iter(node))
+        path.append(key)
+        node = node[key]
+    return path
+
+
+def rewrite_task_tools(text: str, updates: dict[tuple[str, str], str]) -> tuple[str, list[str]]:
+    """Apply updates to mise.toml task tools, written inline (`tools = { node = "v" }` under [tasks.<name>]) or as a
+    [tasks.<name>.tools] table; return the new text and a label per pin changed. InputError for a pin it misses."""
+    if not updates:
+        return text, []
+    pieces, offset = [], 0
+    for header in re.finditer(r"^\[tasks\.[^\r\n]*\][ \t]*(?:#[^\r\n]*)?(?=\r?$)", text, re.MULTILINE):
+        following = re.search(r"^\s*\[", text[header.end() :], re.MULTILINE)
+        end = header.end() + following.start() if following else len(text)
+        path = table_path(header.group(0))
+        section = text[header.end() : end]
+        for (task, tool), version in updates.items():
+            if path == ["tasks", task, "tools"]:
+                section = tool_line_pattern(tool).sub(lambda m, v=version: f"{m.group(1)}{v}{m.group(4)}", section, 1)
+            elif path == ["tasks", task]:
+                value = re.compile(rf"""((?:^|,)\s*{toml_key(tool)}\s*=\s*(["']))(.*?)(\2)""")
+                section = re.sub(
+                    r"^([ \t]*tools[ \t]*=[ \t]*\{)([^}\r\n]*)",
+                    lambda m, p=value, v=version: (
+                        m.group(1) + p.sub(lambda n: f"{n.group(1)}{v}{n.group(4)}", m.group(2))
+                    ),
+                    section,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+        pieces += [text[offset : header.end()], section]
+        offset = end
+    new_text = "".join([*pieces, text[offset:]])
+    tasks = parse_toml(new_text, "mise.toml").get("tasks", {})
+    missed = [
+        f"[tasks.{task}] {tool}"
+        for (task, tool), version in updates.items()
+        if version_of(tasks[task]["tools"][tool], f"mise.toml [tasks.{task}] tools.{tool}") != version
+    ]
+    if missed:
+        raise InputError(
+            f"could not rewrite the task tool pin for: {', '.join(sorted(missed))} "
+            '(sync edits `tools = { name = "v" }` under [tasks.<name>] and `name = "v"` under [tasks.<name>.tools])'
+        )
+    return new_text, sorted(f"{tool} ([tasks.{task}])" for task, tool in updates)
 
 
 def with_baseline_ref(text: str | None, ref: str) -> str:
@@ -929,6 +1017,8 @@ def sync(baseline_path: Path, repo: Path, ref: str | None, sets_dir: Path = SETS
     changed: list[str] = []
     mise_path = repo / "mise.toml"
     text, mise_changed = rewrite_tools_section(read_raw(mise_path), {k: v for k, v in updates.items() if k != RUST})
+    drift, _ = task_tool_drift(repo, baseline, overrides)
+    text, task_changed = rewrite_task_tools(text, {pin: expected for pin, (_, expected, _) in drift.items()})
     shared, stale, text = plan_task_sets(repo, sets_dir, ref, text)
     writes[mise_path] = text
     changed += mise_changed
@@ -947,6 +1037,7 @@ def sync(baseline_path: Path, repo: Path, ref: str | None, sets_dir: Path = SETS
             changed.append(RUST)
 
     missed = sorted(set(updates) - set(changed))
+    changed += task_changed
     if missed:
         raise InputError(
             f"could not rewrite the pin for: {', '.join(missed)} "
