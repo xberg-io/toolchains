@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.13.2] - 2026-11-01
+
+### Changed
+
+- alef 0.115.13: Zig bool C ABI, extendr primitive bridge parameters, AGP 9 `copyHostJni` ordering.
+
 ## [1.13.1] - 2026-11-01
 
 ### Added
