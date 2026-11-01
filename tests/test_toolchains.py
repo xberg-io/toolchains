@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -22,6 +23,19 @@ java = "temurin-21.0.9+10.0.LTS"
 rust = "1.99.1"
 "github:nextest-rs/nextest" = { version = "0.9.149", version_prefix = "cargo-nextest-" }
 """
+# The npm registry's dist.integrity for pnpm 12.15.0 and the corepack suffix hash repositories commit for it.
+PNPM_INTEGRITY = "sha512-s5UdbW/0qfE9x89WzSjSuOs328ycaOUuHhGRhz6p+CoBcoerULqtxczElPA2xnwOR+sTYIwvo29HcRth6hKOYQ=="
+PNPM_HEX = (
+    "b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a"
+    "017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61"
+)
+
+
+def fake_registry(integrity: str = PNPM_INTEGRITY) -> mock.Mock:
+    """A urlopen stand-in that serves one dist.integrity for every pnpm release and records the URLs asked for."""
+    return mock.Mock(
+        side_effect=lambda *_args, **_kwargs: io.BytesIO(json.dumps({"dist": {"integrity": integrity}}).encode())
+    )
 
 
 class CheckTest(unittest.TestCase):
@@ -750,8 +764,9 @@ class SyncVersionFilesTest(unittest.TestCase):
             "fuzz/rust-toolchain.toml": ('[toolchain]\nchannel = "nightly"\n', '[toolchain]\nchannel = "nightly"\n'),
             "package.json": (
                 '{\n  "name": "x",\n  "packageManager": "pnpm@9.15.0+sha512.deadbeef"\n}\n',
-                '{\n  "name": "x",\n  "packageManager": "pnpm@10.4.1"\n}\n',
+                f'{{\n  "name": "x",\n  "packageManager": "pnpm@10.4.1+sha512.{PNPM_HEX}"\n}}\n',
             ),
+            "web/package.json": ('{"packageManager": "pnpm@9.15.0"}', '{"packageManager": "pnpm@10.4.1"}'),
             "docs/package.json": (
                 '{"packageManager": "pnpm@10.4.1+sha512.keep"}',
                 '{"packageManager": "pnpm@10.4.1+sha512.keep"}',
@@ -761,15 +776,18 @@ class SyncVersionFilesTest(unittest.TestCase):
         for name, (before, _) in files.items():
             self.write(name, before)
 
-        code, out, err = self.invoke("sync")
+        registry = fake_registry()
+        with mock.patch.object(toolchains.urllib.request, "urlopen", registry):
+            code, out, err = self.invoke("sync")
 
         self.assertEqual((code, err), (0, ""))
+        self.assertEqual([c.args[0] for c in registry.call_args_list], ["https://registry.npmjs.org/pnpm/10.4.1"])
         for name, (_, after) in files.items():
             with self.subTest(name=name):
                 self.assertEqual(self.read(name), after)
         self.assertIn(
-            "updated 7 version files: .nvmrc, .python-version, .ruby-version, e2e/rust-toolchain.toml, "
-            "legacy/rust-toolchain, package.json, web/.node-version",
+            "updated 8 version files: .nvmrc, .python-version, .ruby-version, e2e/rust-toolchain.toml, "
+            "legacy/rust-toolchain, package.json, web/.node-version, web/package.json",
             out,
         )
         self.assertIn("updated 1 pins: rust", out)
@@ -782,6 +800,55 @@ class SyncVersionFilesTest(unittest.TestCase):
         self.write("Dockerfile", "FROM node:24.22-slim\n")
         code, _, err = self.invoke("check")
         self.assertEqual(code, 0, err)
+
+    def test_sync_without_the_registry_fails_and_keeps_the_suffix(self) -> None:
+        original = '{"packageManager": "pnpm@9.15.0+sha512.deadbeef"}'
+        self.write("package.json", original)
+        self.write(".nvmrc", "22.20.0\n")
+        offline = mock.Mock(side_effect=toolchains.urllib.error.URLError("no network"))
+
+        with mock.patch.object(toolchains.urllib.request, "urlopen", offline):
+            code, _, err = self.invoke("sync")
+
+        self.assertEqual(code, 2)
+        self.assertIn(
+            "error: package.json: cannot read the sha512 integrity of pnpm 10.4.1 from "
+            "https://registry.npmjs.org/pnpm/10.4.1: <urlopen error no network>",
+            err,
+        )
+        self.assertEqual(self.read("package.json"), original)
+        self.assertEqual(self.read(".nvmrc"), "22.20.0\n")
+
+    def test_sync_rejects_a_registry_answer_without_the_algorithm_or_an_unknown_suffix(self) -> None:
+        cases = {
+            '{"packageManager": "pnpm@9.15.0+sha512.deadbeef"}': "dist.integrity 'sha1-AAAA' has no sha512 hash",
+            '{"packageManager": "pnpm@9.15.0+deadbeef"}': "cannot recompute the packageManager suffix '+deadbeef'",
+        }
+        for original, message in cases.items():
+            with self.subTest(original=original):
+                self.write("package.json", original)
+
+                with mock.patch.object(toolchains.urllib.request, "urlopen", fake_registry("sha1-AAAA")):
+                    code, _, err = self.invoke("sync")
+
+                self.assertEqual(code, 2)
+                self.assertIn(message, err)
+                self.assertEqual(self.read("package.json"), original)
+
+    def test_check_accepts_a_suffixed_package_manager_on_the_baseline(self) -> None:
+        self.write("package.json", f'{{"packageManager": "pnpm@10.4.1+sha512.{PNPM_HEX}"}}')
+
+        code, out, err = self.invoke("check")
+
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("checked 1 version files: package.json", out)
+
+    def test_registry_integrity_converts_to_the_corepack_hex(self) -> None:
+        with mock.patch.object(toolchains.urllib.request, "urlopen", fake_registry()) as registry:
+            digest = toolchains.pnpm_integrity("12.15.0", "sha512")
+
+        self.assertEqual(digest, PNPM_HEX)
+        registry.assert_called_once_with("https://registry.npmjs.org/pnpm/12.15.0", timeout=30)
 
     def test_sync_writes_the_override_version(self) -> None:
         self.write("mise.toml", '[tools]\nnode = "22.20.0"\n')

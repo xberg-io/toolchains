@@ -4,7 +4,7 @@
 `rust-toolchain` and `package.json` `packageManager: pnpm@X` must state the expected version exactly. Dockerfile
 `FROM node|python|golang|ruby:<tag>` lines are compared on major.minor, since the official images publish patch
 tags after the release the baseline already follows. `sync` rewrites every one of them except `.tool-versions`
-and Dockerfiles.
+and Dockerfiles, and recomputes a `packageManager` `+<algorithm>.<hex>` integrity suffix for the new release.
 """
 
 from __future__ import annotations
@@ -49,6 +49,10 @@ PACKAGE_MANAGER = re.compile(r'("packageManager"\s*:\s*"pnpm@)([^"+]*)((?:\+[^"]
 Wanted = Callable[[str], tuple[str, str] | None]
 # A tool name as a file spells it (`nodejs`) to its baseline key, or None.
 KeyFor = Callable[[str], str | None]
+# A pnpm version and a hash algorithm (`sha512`) to the hex digest of that release; raises when it cannot.
+Integrity = Callable[[str, str], str]
+# The corepack integrity suffix of a packageManager value: `+sha512.<hex>`.
+INTEGRITY_SUFFIX = re.compile(r"\+([A-Za-z0-9]+)\.[0-9A-Fa-f]+")
 
 
 @dataclass
@@ -259,9 +263,23 @@ def rewritten_rust(path: str, text: str, version: str) -> str:
     return with_first_value(text, version)
 
 
-def rewritten(path: str, text: str, wanted: Wanted) -> str:
+def rewritten_package_manager(match: re.Match[str], version: str, integrity: Integrity) -> str:
+    """A packageManager value moved to pnpm@version, with any integrity suffix recomputed for that release."""
+    if match.group(2) == version:
+        return match.group(0)
+    suffix = match.group(3)
+    if suffix:
+        algorithm = INTEGRITY_SUFFIX.fullmatch(suffix)
+        if algorithm is None:
+            raise ValueError(f"cannot recompute the packageManager suffix {suffix!r}; expected +<algorithm>.<hex>")
+        suffix = f"+{algorithm.group(1)}.{integrity(version, algorithm.group(1))}"
+    return f"{match.group(1)}{version}{suffix}{match.group(4)}"
+
+
+def rewritten(path: str, text: str, wanted: Wanted, integrity: Integrity) -> str:
     """text with the version a single-version file, nested rust-toolchain file or packageManager states moved to
-    what wanted expects. Other files, and pins wanted does not cover, come back unchanged."""
+    what wanted expects. Other files, and pins wanted does not cover, come back unchanged. Raises ValueError when a
+    packageManager integrity suffix cannot be recomputed."""
     name = path.rsplit("/", 1)[-1]
     if name in SINGLE:
         key, prefix = SINGLE[name]
@@ -278,8 +296,5 @@ def rewritten(path: str, text: str, wanted: Wanted) -> str:
         expected = wanted("pnpm")
         if expected is None:
             return text
-        # A +sha512 suffix hashes the release it names, so a moved version drops it. ~keep
-        return PACKAGE_MANAGER.sub(
-            lambda m: m.group(0) if m.group(2) == expected[0] else f"{m.group(1)}{expected[0]}{m.group(4)}", text
-        )
+        return PACKAGE_MANAGER.sub(lambda m: rewritten_package_manager(m, expected[0], integrity), text)
     return text

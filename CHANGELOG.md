@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `sync` recomputes a `packageManager` `+sha512.<hex>` suffix for the new pnpm release instead of dropping it.
+
 ## [1.13.0] - 2026-11-01
 
 ### Added

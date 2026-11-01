@@ -12,7 +12,8 @@ and Dockerfile `FROM node|python|golang|ruby:<tag>` (major.minor only). Exits 0 
 
 `sync` rewrites those pins to the baseline versions in place, skipping overridden tools, moves the version files
 above except `.tool-versions` and Dockerfiles to the baseline or override, and records the baseline ref in
-toolchains.toml. It edits matching lines only, so comments and layout survive.
+toolchains.toml. It edits matching lines only, so comments and layout survive. A `packageManager` value with a
+`+sha512.<hex>` suffix gets the new release's hash from the npm registry; sync fails when it cannot read it.
 
 Task sets: toolchains.toml `task_sets` names sets under task-sets/. `sync` writes their tasks to
 mise-tasks/shared.toml, copies their file tasks to mise-tasks/.shared/ and adds both to mise.toml's
@@ -23,6 +24,8 @@ when the repository defines a task a set provides without a `task_overrides` ent
 from __future__ import annotations
 
 import argparse
+import base64
+import json
 import os
 import posixpath
 import re
@@ -30,6 +33,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,6 +65,8 @@ EXECUTABLE = 0o755
 POSIX_MODES = os.name != "nt"
 # Editor and patch leftovers in a set directory that sync must not ship.
 BACKUP_SUFFIXES = ("~", ".bak", ".orig", ".rej", ".swp")
+NPM_REGISTRY = "https://registry.npmjs.org"
+REGISTRY_TIMEOUT = 30
 
 
 @dataclass
@@ -819,9 +825,35 @@ class SyncResult:
     docker: list[str]
 
 
+def pnpm_integrity(version: str, algorithm: str) -> str:
+    """The hex digest corepack expects after `pnpm@<version>+<algorithm>.`: the npm registry's dist.integrity
+    hash of that release, decoded from base64."""
+    url = f"{NPM_REGISTRY}/pnpm/{version}"
+    failure = f"cannot read the {algorithm} integrity of pnpm {version} from {url}"
+    try:
+        with urllib.request.urlopen(url, timeout=REGISTRY_TIMEOUT) as response:
+            integrity = json.load(response)["dist"]["integrity"]
+        entries = dict(entry.partition("-")[::2] for entry in integrity.split())
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise InputError(f"{failure}: {exc}") from exc
+    if algorithm not in entries:
+        raise InputError(f"{failure}: dist.integrity {integrity!r} has no {algorithm} hash")
+    try:
+        return base64.b64decode(entries[algorithm], validate=True).hex()
+    except ValueError as exc:
+        raise InputError(f"{failure}: {exc}") from exc
+
+
 def plan_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str, dict]) -> tuple[dict, list[str]]:
     """New text for every version file sync rewrites, and the Dockerfile drift it leaves to a person."""
     wanted, key_for = expectations(baseline, overrides)
+    digests: dict[tuple[str, str], str] = {}
+
+    def integrity(version: str, algorithm: str) -> str:
+        if (version, algorithm) not in digests:
+            digests[version, algorithm] = pnpm_integrity(version, algorithm)
+        return digests[version, algorithm]
+
     writes: dict[Path, str] = {}
     dockerfiles = []
     for path in repository_files(repo):
@@ -833,7 +865,10 @@ def plan_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str
                 text = read_raw(repo / path)
             except UnicodeDecodeError:
                 continue
-            new_text = version_files.rewritten(path, text, wanted)
+            try:
+                new_text = version_files.rewritten(path, text, wanted, integrity)
+            except (InputError, ValueError) as exc:
+                raise InputError(f"{path}: {exc}; sync keeps the integrity suffix, so it wrote nothing") from exc
             if new_text != text:
                 writes[repo / path] = new_text
     return writes, version_files.check(repo, dockerfiles, wanted, key_for).errors

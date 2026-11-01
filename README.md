@@ -82,7 +82,7 @@ the files it compared and the ones it could not, and exits 1 when one disagrees:
 | `.python-version` | `python` | exact, first version line | rewrites the first line |
 | `.ruby-version` | `ruby` | exact; a `ruby-` prefix is ignored | rewrites, keeping `ruby-` |
 | `.tool-versions` | each baseline tool it names (`nodejs`, `golang` included) | exact, first version; `system`, `lts` and `latest` are skipped, `java` only when `temurin-<x.y.z>+<build>` | no |
-| `package.json` `packageManager` | `pnpm` | exact; a `+sha512.…` suffix is ignored, other package managers are skipped | rewrites, dropping the hash, which names the old release |
+| `package.json` `packageManager` | `pnpm` | exact; a `+sha512.…` suffix is ignored, other package managers are skipped | rewrites; a `+sha512.<hex>` suffix is recomputed from the npm registry's `dist.integrity` for the new release, and `sync` fails rather than drop it when the registry cannot be read |
 | nested `rust-toolchain.toml`, any `rust-toolchain` | `rust` | exact, like the root file: `1.99` is drift against `1.99.1`; named channels (`nightly`, `nightly-2026-01-01`, `stable`, `beta`) are listed as not checked; invalid TOML is drift | rewrites numeric channels |
 | `Dockerfile`, `Dockerfile.<name>`, `*.Dockerfile`, `Containerfile` | `node`, `python`, `go`, `ruby` | major.minor of official `node`, `python`, `golang`, `ruby` images | no, prints the drift |
 
