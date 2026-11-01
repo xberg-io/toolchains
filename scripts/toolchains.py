@@ -7,8 +7,9 @@ override with a reason. Pinning ai-rulez, which always runs at its newest releas
 when the repository root holds a go-task Taskfile or `.task/` directory, since mise runs the org's tasks.
 Version files mise does not read must agree too: `.nvmrc`, `.node-version`, `.python-version`, `.ruby-version`,
 `.tool-versions`, nested `rust-toolchain.toml` and `rust-toolchain`, `package.json` `packageManager: pnpm@X`
-and Dockerfile `FROM node|python|golang|ruby:<tag>` (major.minor only). Exits 0 when consistent, 1 on drift,
-2 on unusable input or when nothing was checked.
+and Dockerfile `FROM node|python|golang|ruby:<tag>` (major.minor only), except the paths toolchains.toml
+`file_overrides` exempts with a reason. Exits 0 when consistent, 1 on drift, 2 on unusable input or when nothing
+was checked.
 
 `sync` rewrites those pins to the baseline versions in place, skipping overridden tools, moves the version files
 above except `.tool-versions` and Dockerfiles to the baseline or override, and records the baseline ref in
@@ -276,9 +277,41 @@ def expectations(
     return wanted, key_for
 
 
+def load_file_overrides(repo: Path) -> dict[str, str]:
+    """toolchains.toml `file_overrides`: version file paths check and sync leave alone, each with its reason."""
+    path = repo / "toolchains.toml"
+    entries = load_toml(path).get("file_overrides", {}) if path.is_file() else {}
+    if not isinstance(entries, dict) or not all(isinstance(reason, str) for reason in entries.values()):
+        raise InputError(
+            f'{path}: file_overrides must map a version file path to a reason: {{ "<path>" = "<reason>" }}'
+        )
+    return entries
+
+
+def is_version_file(path: str) -> bool:
+    """A file check compares as a version file. The root rust-toolchain.toml is a pin, overridden as [overrides.rust]."""
+    name = path.rsplit("/", 1)[-1]
+    return version_files.is_dockerfile(name) or (name in version_files.VERSION_FILES and path != "rust-toolchain.toml")
+
+
+def check_file_overrides(files: list[str], exempt: dict[str, str], report: Report) -> None:
+    for path, reason in sorted(exempt.items()):
+        if not is_version_file(path):
+            report.errors.append(f"{path}: file_overrides entry for a file check does not compare as a version file")
+        elif path not in files:
+            report.errors.append(f"{path}: file_overrides entry for a version file the repository does not have")
+        elif not reason.strip():
+            report.errors.append(f"{path}: file_overrides entry has no reason")
+        else:
+            report.unchecked_files.append(f"{path} (file_overrides)")
+
+
 def check_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str, dict], report: Report) -> set[str]:
     """Version files mise does not read must state the tool's override, else its baseline version."""
-    found = version_files.check(repo, repository_files(repo), *expectations(baseline, overrides))
+    files, exempt = repository_files(repo), load_file_overrides(repo)
+    check_file_overrides(files, exempt, report)
+    paths = [path for path in files if path not in exempt]
+    found = version_files.check(repo, paths, *expectations(baseline, overrides))
     report.errors += found.errors
     report.files += found.files
     report.unchecked_files += found.unchecked
@@ -856,7 +889,8 @@ def plan_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str
 
     writes: dict[Path, str] = {}
     dockerfiles = []
-    for path in repository_files(repo):
+    exempt = load_file_overrides(repo)
+    for path in (path for path in repository_files(repo) if path not in exempt):
         name = path.rsplit("/", 1)[-1]
         if version_files.is_dockerfile(name):
             dockerfiles.append(path)

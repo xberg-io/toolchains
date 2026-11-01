@@ -850,6 +850,57 @@ class SyncVersionFilesTest(unittest.TestCase):
         self.assertEqual(digest, PNPM_HEX)
         registry.assert_called_once_with("https://registry.npmjs.org/pnpm/12.15.0", timeout=30)
 
+    def test_file_override_keeps_a_deliberate_msrv_file_out_of_sync_and_check(self) -> None:
+        msrv = '[toolchain]\nchannel = "1.90.0"\n'
+        self.write(".github/toolchains/fetcher-msrv/rust-toolchain.toml", msrv)
+        self.write("e2e/rust-toolchain.toml", '[toolchain]\nchannel = "1.95.0"\n')
+        self.write(
+            "toolchains.toml",
+            '[file_overrides]\n".github/toolchains/fetcher-msrv/rust-toolchain.toml" = "fetcher crate MSRV job"\n',
+        )
+
+        code, out, err = self.invoke("sync")
+
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("updated 1 version files: e2e/rust-toolchain.toml", out)
+        self.assertEqual(self.read(".github/toolchains/fetcher-msrv/rust-toolchain.toml"), msrv)
+        code, out, err = self.invoke("check")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn(
+            "version files not checked: .github/toolchains/fetcher-msrv/rust-toolchain.toml (file_overrides)", out
+        )
+
+    def test_file_override_problems_fail_the_check(self) -> None:
+        self.write("e2e/rust-toolchain.toml", '[toolchain]\nchannel = "1.90.0"\n')
+        self.write("rust-toolchain.toml", '[toolchain]\nchannel = "1.99.1"\n')
+        self.write("README.md", "docs\n")
+        cases = {
+            '"e2e/rust-toolchain.toml" = " "': "e2e/rust-toolchain.toml: file_overrides entry has no reason",
+            '"gone/rust-toolchain.toml" = "x"': (
+                "gone/rust-toolchain.toml: file_overrides entry for a version file the repository does not have"
+            ),
+            '"README.md" = "x"': "README.md: file_overrides entry for a file check does not compare as a version file",
+            '"rust-toolchain.toml" = "x"': (
+                "rust-toolchain.toml: file_overrides entry for a file check does not compare as a version file"
+            ),
+        }
+        for entry, message in cases.items():
+            with self.subTest(entry=entry):
+                self.write("toolchains.toml", f"[file_overrides]\n{entry}\n")
+
+                code, _, err = self.invoke("check")
+
+                self.assertEqual(code, 1)
+                self.assertIn(f"drift: {message}", err)
+
+    def test_malformed_file_overrides_is_an_input_error(self) -> None:
+        self.write("toolchains.toml", 'file_overrides = ["e2e/rust-toolchain.toml"]\n')
+
+        code, _, err = self.invoke("check")
+
+        self.assertEqual(code, 2)
+        self.assertIn('file_overrides must map a version file path to a reason: { "<path>" = "<reason>" }', err)
+
     def test_sync_writes_the_override_version(self) -> None:
         self.write("mise.toml", '[tools]\nnode = "22.20.0"\n')
         self.write("toolchains.toml", '[overrides.node]\nversion = "22.20.0"\nreason = "engine floor test"\n')

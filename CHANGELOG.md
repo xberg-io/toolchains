@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `file_overrides` in `toolchains.toml` exempts a version file, such as a nested MSRV `rust-toolchain.toml`, from
+  `sync` and `check`, with a reason.
+
 ### Fixed
 
 - `sync` recomputes a `packageManager` `+sha512.<hex>` suffix for the new pnpm release instead of dropping it.

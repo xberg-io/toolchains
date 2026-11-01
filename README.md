@@ -91,6 +91,18 @@ Exact matching keeps every place that installs a runtime on the version CI locks
 is installed. The root `rust-toolchain.toml` is checked with the mise pins and must name the baseline channel
 exactly; a repository that needs another toolchain for fuzzing or Miri keeps it in a nested file.
 
+A version file that must stay off the baseline on purpose, such as a nested `rust-toolchain.toml` that pins a crate's
+MSRV, is listed under `file_overrides` in `toolchains.toml` by its repository-relative path, with a reason:
+
+```toml
+[file_overrides]
+".github/toolchains/fetcher-msrv/rust-toolchain.toml" = "the fetcher crate's MSRV job builds on its oldest supported Rust"
+```
+
+`sync` leaves the file alone and `check` lists it as not checked. `check` exits 1 when an entry has no reason,
+names a path the repository does not have (in a git checkout, a tracked one), or names a file it does not compare
+as a version file; the root `rust-toolchain.toml` is overridden with `[overrides.rust]` instead.
+
 Dockerfile tags are compared on major.minor only, because the official images publish patch tags after the release
 the baseline already follows: `FROM node:26.13-slim` and `FROM node:26.13.1` pass against `26.13.0`; `FROM node:26`,
 `node:latest` and an untagged `node` are drift. `Dockerfile.<name>` with a template or document extension (`.j2`,
