@@ -270,12 +270,13 @@ def expectations(
     return wanted, key_for
 
 
-def check_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str, dict], report: Report) -> None:
+def check_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str, dict], report: Report) -> set[str]:
     """Version files mise does not read must state the tool's override, else its baseline version."""
     found = version_files.check(repo, repository_files(repo), *expectations(baseline, overrides))
     report.errors += found.errors
     report.files += found.files
     report.unchecked_files += found.unchecked
+    return found.pin_keys
 
 
 @dataclass(frozen=True)
@@ -717,6 +718,28 @@ def without_unpinned(pins: dict[str, Pin], report: Report) -> dict[str, Pin]:
     return {name: pin for name, pin in pins.items() if unpinned_key(name) not in UNPINNED}
 
 
+def override_error(name: str, override: dict, expected: Pin, pin: Pin | None) -> str | None:
+    if not str(override.get("reason", "")).strip():
+        return f"{name}: override in toolchains.toml has no reason"
+    if override["version"] == expected.version:
+        return f"{name}: override matches the baseline ({expected.version}); remove it"
+    if pin is not None and override["version"] != pin.version:
+        return f"{name}: override says {override['version']}, {pin.source} pins {pin.version}"
+    return None
+
+
+def check_tool_overrides(
+    pins: dict[str, Pin], version_pins: set[str], baseline: dict[str, Pin], overrides: dict[str, dict], report: Report
+) -> None:
+    for name, override in sorted(overrides.items()):
+        if name not in pins and name not in version_pins:
+            report.errors.append(f"{name}: override in toolchains.toml for a tool the repository does not pin")
+        elif name not in baseline:
+            report.errors.append(f"{name}: override in toolchains.toml for a tool outside the baseline")
+        elif error := override_error(name, override, baseline[name], pins.get(name)):
+            report.errors.append(error)
+
+
 def check(baseline_path: Path, repo: Path, sets_dir: Path = SETS_DIR) -> Report:
     baseline = load_baseline(baseline_path)
     pins = repo_pins(repo)
@@ -737,27 +760,15 @@ def check(baseline_path: Path, repo: Path, sets_dir: Path = SETS_DIR) -> Report:
             report.errors.append(
                 f"{name}: options {dict(pin.options)} differ from the baseline's {dict(expected.options)}"
             )
-        override = overrides.get(name)
-        if override is None:
-            if pin.version != expected.version:
-                report.errors.append(f"{name}: {pin.source} pins {pin.version}, baseline is {expected.version}")
-            continue
-        if not str(override.get("reason", "")).strip():
-            report.errors.append(f"{name}: override in toolchains.toml has no reason")
-        elif override["version"] == expected.version:
-            report.errors.append(f"{name}: override matches the baseline ({expected.version}); remove it")
-        elif override["version"] != pin.version:
-            report.errors.append(f"{name}: override says {override['version']}, {pin.source} pins {pin.version}")
+        if name not in overrides and pin.version != expected.version:
+            report.errors.append(f"{name}: {pin.source} pins {pin.version}, baseline is {expected.version}")
 
-    for name in sorted(set(overrides) - set(pins)):
-        report.errors.append(f"{name}: override in toolchains.toml for a tool the repository does not pin")
-    for name in sorted((set(overrides) & set(pins)) - set(baseline)):
-        report.errors.append(f"{name}: override in toolchains.toml for a tool outside the baseline")
+    version_pins = check_version_files(repo, baseline, overrides, report)
+    check_tool_overrides(pins, version_pins, baseline, overrides, report)
     report.errors += [
         f"{name}: go-task leftover; tasks run with mise now, so port it to mise.toml or mise-tasks/ and delete it"
         for name in go_task_leftovers(repo)
     ]
-    check_version_files(repo, baseline, overrides, report)
     check_task_sets(repo, sets_dir, report)
     return report
 

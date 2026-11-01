@@ -234,7 +234,7 @@ class CheckTest(unittest.TestCase):
         self.assertIn("drift: Taskfile.yml: go-task leftover", err)
 
 
-class VersionFilesTest(unittest.TestCase):
+class VersionFileFixture(unittest.TestCase):
     """Version files mise does not read must agree with the baseline, or the repository's reasoned override."""
 
     def setUp(self) -> None:
@@ -260,6 +260,86 @@ class VersionFilesTest(unittest.TestCase):
             code = toolchains.main(["check", "--baseline", str(self.baseline), "--repo", str(self.repo)])
         return code, out.getvalue(), err.getvalue()
 
+
+class DockerOnlyOverridesTest(VersionFileFixture):
+    def test_reasoned_docker_only_override_passes(self) -> None:
+        self.write("Dockerfile", "FROM ruby:4.0.9-alpine\n")
+        self.write(
+            "toolchains.toml",
+            '[overrides.ruby]\nversion = "4.0.9"\nreason = "conformance reference image"\n',
+        )
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertIn("checked 1 tools", out)
+        self.assertIn("checked 1 version files: Dockerfile", out)
+
+    def test_docker_only_override_rejects_missing_or_excluded_pins(self) -> None:
+        self.write("toolchains.toml", '[overrides.ruby]\nversion = "4.0.9"\nreason = "reference"\n')
+        for path in (None, "vendor/Dockerfile"):
+            with self.subTest(path=path):
+                if path:
+                    self.write(path, "FROM ruby:4.0.9-alpine\n")
+                code, _, err = self.run_main()
+                self.assertEqual(code, 1)
+                self.assertIn("ruby: override in toolchains.toml for a tool the repository does not pin", err)
+
+    def test_docker_only_override_rejects_unresolved_pin_in_a_checked_file(self) -> None:
+        self.write("toolchains.toml", '[overrides.ruby]\nversion = "4.0.9"\nreason = "reference"\n')
+        self.write("Dockerfile", "FROM node:24.22.1\nFROM ruby:${RUBY_VERSION}-alpine\n")
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn("checked 1 version files: Dockerfile", out)
+        self.assertIn("ruby: override in toolchains.toml for a tool the repository does not pin", err)
+
+    def test_docker_only_override_rejects_missing_reason_and_redundant_version(self) -> None:
+        cases = (
+            ("4.0.9", "", "ruby: override in toolchains.toml has no reason"),
+            ("3.4.7", "reference", "ruby: override matches the baseline (3.4.7); remove it"),
+        )
+        for version, reason, expected in cases:
+            with self.subTest(version=version):
+                self.write("Dockerfile", f"FROM ruby:{version}-alpine\n")
+                self.write(
+                    "toolchains.toml",
+                    f'[overrides.ruby]\nversion = "{version}"\nreason = "{reason}"\n',
+                )
+                code, _, err = self.run_main()
+                self.assertEqual(code, 1)
+                self.assertIn(expected, err)
+
+    def test_docker_only_override_does_not_hide_a_mismatched_image(self) -> None:
+        self.write("toolchains.toml", '[overrides.ruby]\nversion = "4.0.9"\nreason = "reference"\n')
+        self.write("Dockerfile", "FROM ruby:4.1.0-alpine\n")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn("ruby: Dockerfile FROM ruby:4.1.0-alpine is 4.1, toolchains.toml override is 4.0.9", err)
+
+    def test_docker_only_override_does_not_accept_unknown_tools(self) -> None:
+        self.write("toolchains.toml", '[overrides.rubyy]\nversion = "4.0.9"\nreason = "typo"\n')
+        self.write("Dockerfile", "FROM ruby:3.4.7-alpine\n")
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn("rubyy: override", err)
+
+    def test_docker_only_override_policy_also_accepts_an_actual_version_file(self) -> None:
+        self.write("toolchains.toml", '[overrides.ruby]\nversion = "4.0.9"\nreason = "reference"\n')
+        self.write(".ruby-version", "4.0.9\n")
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertIn("checked 1 version files: .ruby-version", out)
+
+
+class VersionFilesTest(VersionFileFixture):
     def test_isolated_interpreter_runs_the_script(self) -> None:
         script = Path(toolchains.__file__).resolve()
         self.write(".nvmrc", "18\n")
