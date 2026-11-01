@@ -2,10 +2,16 @@
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-11-01
+
 ### Added
 
 - `file_overrides` in `toolchains.toml` exempts a version file, such as a nested MSRV `rust-toolchain.toml`, from
   `sync` and `check`, with a reason.
+
+### Changed
+
+- poly 0.32.2: Windows hook commands keep their argument quoting.
 
 ### Fixed
 
