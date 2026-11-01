@@ -56,6 +56,7 @@ class Findings:
     errors: list[str] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
     unchecked: list[str] = field(default_factory=list)
+    pin_keys: set[str] = field(default_factory=set)
 
 
 def read_text(path: Path) -> str:
@@ -206,8 +207,10 @@ def check_docker_file(path: str, text: str, wanted: Wanted, found: Findings) -> 
             found.errors.append(f"{key}: {path} FROM {shown} has no version tag; pin {line}")
         elif "." not in number.group(1):
             found.errors.append(f"{key}: {path} FROM {shown} names only a major; pin {line}")
-        elif major_minor(number.group(1)) != line:
-            found.errors.append(f"{key}: {path} FROM {shown} is {major_minor(number.group(1))}, {label}")
+        else:
+            found.pin_keys.add(key)
+            if major_minor(number.group(1)) != line:
+                found.errors.append(f"{key}: {path} FROM {shown} is {major_minor(number.group(1))}, {label}")
     return compared
 
 
@@ -221,8 +224,10 @@ def check_pins(where: str, pins: list[tuple[str, str]], wanted: Wanted, found: F
         compared = True
         if not version:
             found.errors.append(f"{key}: {where} names no version, {expected[1]}")
-        elif version != expected[0]:
-            found.errors.append(f"{key}: {where} pins {version}, {expected[1]}")
+        else:
+            found.pin_keys.add(key)
+            if version != expected[0]:
+                found.errors.append(f"{key}: {where} pins {version}, {expected[1]}")
     return compared
 
 
