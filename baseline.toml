@@ -28,13 +28,13 @@ rust = "1.99.1"
 # Org CLIs
 "github:Goldziher/poly" = "0.32.3"
 "github:Goldziher/adrlint" = "0.4.1"
-"github:xberg-io/alef" = "0.115.14"
+"github:xberg-io/alef" = "0.116.0"
 "github:Goldziher/gh-actions-updater" = "0.4.0"
 
 # Rust tooling
 sccache = "0.19.0"
 cargo-deny = "0.20.2"
-"github:nextest-rs/nextest" = { version = "0.9.150", version_prefix = "cargo-nextest-" }
+"github:nextest-rs/nextest" = { version = "0.9.151", version_prefix = "cargo-nextest-" }
 "github:taiki-e/cargo-llvm-cov" = "0.9.1"
 "github:bnjbvr/cargo-machete" = "0.9.2"
 "github:DevinR528/cargo-sort" = "2.1.4"
