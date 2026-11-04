@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-11-04
+
 ### Added
 
 - `[platforms] min_macos_version = "26.0"` in `baseline.toml`: one macOS minimum for every repository, in alef's
