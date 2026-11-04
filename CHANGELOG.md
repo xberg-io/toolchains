@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-11-05
+
 ### Changed
 
 - alef 0.124.1: generated Dart bindings no longer cast primitives to their own type, which failed `clippy -D warnings`.
