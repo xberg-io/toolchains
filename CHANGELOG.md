@@ -8,6 +8,10 @@
   `min_macos_version` name and form. `check` and `sync` reject an unknown `[platforms]` key or a value that is not
   `<major>.<minor>` (#11).
 
+### Changed
+
+- alef 0.121.0 (generated Python packages now require Python 3.11, from alef 0.117.0), uv 0.13.7.
+
 ## [1.13.2] - 2026-11-01
 
 ### Changed
