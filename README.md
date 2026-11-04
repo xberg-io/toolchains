@@ -7,7 +7,7 @@ every repository installs locally and in CI.
 
 | Path | Purpose |
 |---|---|
-| `baseline.toml` | Canonical versions, in mise `[tools]` syntax. Renovate bumps them here first. |
+| `baseline.toml` | Canonical versions, in mise `[tools]` syntax, and the org's OS minimums under `[platforms]`. Renovate bumps the tools here first. |
 | `scripts/toolchains.py` | `check` reports drift from the baseline and the task sets; `sync` rewrites a repository's pins and shared tasks. Standard library only, Python 3.11+. |
 | `task-sets/` | Named sets of mise tasks that `sync` writes into a repository (see [Task sets](#task-sets)). |
 | `default.json` | Renovate preset for consumers: turns off upstream bumps for baseline tools, groups repo-owned ones. |
@@ -213,6 +213,32 @@ Left out because the bodies diverge per repository: `rust:build`, `rust:test`, `
 left out: `default` (`mise tasks ls` in 9/9, nothing to maintain), `build` (5/10, a wrapper for the repository's own
 `rust:build`) and the per-language `elixir:*`, `go:*` and `ruby:*` tasks (two or three repositories, each tied to
 its package layout).
+
+## Platform minimums
+
+`baseline.toml` `[platforms]` holds the operating system minimums every repository builds for, so no repository
+picks its own:
+
+```toml
+[platforms]
+min_macos_version = "26.0"
+```
+
+`min_macos_version` is the macOS deployment target for every Swift package, binding and macOS build. It uses the
+name and `<major>.<minor>` form of alef's `[crates.swift] min_macos_version`, whose default is alef's
+`SWIFT_MIN_MACOS`; SwiftPM takes the major only, so `26.0` renders as `.macOS(.v26)`, which needs
+`swift-tools-version` 6.2. `check` and `sync` fail with exit 2 on an unknown key or a value that is not
+`<major>.<minor>`.
+
+Read it from the baseline tag the repository follows, never a copy:
+
+```sh
+yq -p toml -oy '.platforms.min_macos_version' /tmp/toolchains/baseline.toml
+python3 -c 'import tomllib,sys; print(tomllib.load(open(sys.argv[1], "rb"))["platforms"]["min_macos_version"])' \
+  /tmp/toolchains/baseline.toml
+```
+
+`check` does not yet compare a repository's `Package.swift`, `alef.toml` or build settings with it.
 
 ## Lock gaps
 

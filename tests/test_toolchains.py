@@ -1039,6 +1039,64 @@ class SyncVersionFilesTest(unittest.TestCase):
         self.assertEqual(self.read(".nvmrc"), "22.20.0\n")
 
 
+class PlatformsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.baseline = self.root / "baseline.toml"
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+        (self.repo / "mise.toml").write_text('[tools]\nnode = "24.22.1"\n')
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def run_check(self, platforms: str) -> tuple[int, str]:
+        self.baseline.write_text(BASELINE + platforms)
+        err = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            code = toolchains.main(["check", "--baseline", str(self.baseline), "--repo", str(self.repo)])
+        return code, err.getvalue()
+
+    def test_minimum_macos_is_read_from_the_baseline(self) -> None:
+        self.baseline.write_text(BASELINE + '\n[platforms]\nmin_macos_version = "26.0"\n')
+
+        self.assertEqual(toolchains.load_platforms(self.baseline), {"min_macos_version": "26.0"})
+
+    def test_baseline_without_platforms_has_none(self) -> None:
+        self.baseline.write_text(BASELINE)
+
+        self.assertEqual(toolchains.load_platforms(self.baseline), {})
+
+    def test_check_accepts_a_valid_platforms_table(self) -> None:
+        code, err = self.run_check('\n[platforms]\nmin_macos_version = "26.0"\n')
+
+        self.assertEqual(code, 0, err)
+
+    def test_malformed_platforms_are_input_errors(self) -> None:
+        cases = {
+            "major only": ('min_macos_version = "26"', "min_macos_version must be <major>.<minor>"),
+            "patch level": ('min_macos_version = "26.0.1"', "min_macos_version must be <major>.<minor>"),
+            "not a string": ("min_macos_version = 26.0", "min_macos_version must be <major>.<minor>"),
+            "unknown key": ('min_macos = "26.0"', "[platforms] has unknown key min_macos"),
+        }
+        for label, (line, message) in cases.items():
+            with self.subTest(label):
+                code, err = self.run_check(f"\n[platforms]\n{line}\n")
+
+                self.assertEqual(code, 2)
+                self.assertIn(message, err)
+
+    def test_platforms_must_be_a_table(self) -> None:
+        self.baseline.write_text('platforms = "26.0"\n' + BASELINE)
+        err = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            code = toolchains.main(["check", "--baseline", str(self.baseline), "--repo", str(self.repo)])
+
+        self.assertEqual(code, 2)
+        self.assertIn("[platforms] must be a table", err.getvalue())
+
+
 class RealBaselineTest(unittest.TestCase):
     def test_repository_baseline_parses_and_lists_tools(self) -> None:
         baseline = Path(__file__).resolve().parent.parent / "baseline.toml"
@@ -1049,6 +1107,11 @@ class RealBaselineTest(unittest.TestCase):
         self.assertRegex(versions["github:nextest-rs/nextest"], r"^\d+\.\d+\.\d+$")
         self.assertNotIn("task", versions)
         self.assertTrue(all(versions.values()))
+
+    def test_repository_baseline_sets_the_org_minimum_macos(self) -> None:
+        baseline = Path(__file__).resolve().parent.parent / "baseline.toml"
+
+        self.assertEqual(toolchains.load_platforms(baseline), {"min_macos_version": "26.0"})
 
     def test_renovate_preset_disables_exactly_the_baseline_tools(self) -> None:
         root = Path(__file__).resolve().parent.parent

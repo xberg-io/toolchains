@@ -47,6 +47,8 @@ RUST = "rust"
 # Registry aliases mise accepts for a baseline tool under another name.
 ALIASES = {"nodejs": "node", "golang": "go", "tofu": "opentofu"}
 # Tools no repository may pin, in any backend spelling, with the replacement.
+# alef's `[crates.swift] min_macos_version` and SWIFT_MIN_MACOS use the same name and form.
+PLATFORM_KEYS = {"min_macos_version": re.compile(r"\d+\.\d+")}
 UNPINNED = {"ai-rulez": "remove it from mise.toml and run `npx -y ai-rulez@latest`"}
 QUOTED = r"""(?:"[^"]*"|'[^']*')"""
 # Every root file name go-task v3 reads, in any letter case (macOS and Windows match case-insensitively).
@@ -183,10 +185,25 @@ def load_overrides(repo: Path) -> dict[str, dict]:
     return overrides
 
 
+def load_platforms(baseline_path: Path) -> dict[str, str]:
+    """The baseline's [platforms] minimums, validated; empty when the table is absent."""
+    platforms = load_toml(baseline_path).get("platforms", {})
+    if not isinstance(platforms, dict):
+        raise InputError(f"{baseline_path}: [platforms] must be a table")
+    for key, value in platforms.items():
+        pattern = PLATFORM_KEYS.get(key)
+        if pattern is None:
+            raise InputError(f"{baseline_path}: [platforms] has unknown key {key}; known: {', '.join(PLATFORM_KEYS)}")
+        if not isinstance(value, str) or not pattern.fullmatch(value):
+            raise InputError(f"{baseline_path}: [platforms] {key} must be <major>.<minor>, got {value!r}")
+    return platforms
+
+
 def load_baseline(baseline_path: Path) -> dict[str, Pin]:
     baseline = load_pins(baseline_path, "baseline.toml")
     if not baseline:
         raise InputError(f"{baseline_path}: [tools] is empty")
+    load_platforms(baseline_path)
     return baseline
 
 

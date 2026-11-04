@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- `[platforms] min_macos_version = "26.0"` in `baseline.toml`: one macOS minimum for every repository, in alef's
+  `min_macos_version` name and form. `check` and `sync` reject an unknown `[platforms]` key or a value that is not
+  `<major>.<minor>` (#11).
+
 ## [1.13.2] - 2026-11-01
 
 ### Changed

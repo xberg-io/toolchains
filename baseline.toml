@@ -55,3 +55,9 @@ kubectl = "1.36.6"
 opentofu = "1.13.2"
 k6 = "2.3.0"
 aws-cli = "2.39.3"
+
+# Operating system minimums every repository builds for, read by binding generators and package templates instead
+# of each repository choosing its own. min_macos_version uses alef's `min_macos_version` name and form.
+[platforms]
+# Org decision: macOS 26, the release that ships the Swift 6.2 PackageDescription platform enum (`.v26`).
+min_macos_version = "26.0"
