@@ -12,6 +12,8 @@
 
 - alef 0.124.0 (generated Python packages now require Python 3.11, from alef 0.117.0; private-field accessors keep
   their values in every binding), uv 0.13.7.
+- poly 0.32.5: git hooks resolve the mise-pinned poly without shell activation, and Windows hook source checks keep
+  their quoting.
 
 ## [1.13.2] - 2026-11-01
 
