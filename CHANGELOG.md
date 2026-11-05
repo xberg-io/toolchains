@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The macOS floors are the lowest versions that the code and the toolchain need, not the macOS of the build runners.
+  `[platforms] min_macos_version` is `10.15` for Swift packages, and the new `macos_deployment_target` is `10.13` for
+  shipped binaries and wheels. Nothing in the org's packages needs macOS 26.
+
 ## [1.14.3] - 2026-11-05
 
 ### Fixed

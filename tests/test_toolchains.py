@@ -1059,9 +1059,14 @@ class PlatformsTest(unittest.TestCase):
         return code, err.getvalue()
 
     def test_minimum_macos_is_read_from_the_baseline(self) -> None:
-        self.baseline.write_text(BASELINE + '\n[platforms]\nmin_macos_version = "26.0"\n')
+        self.baseline.write_text(
+            BASELINE + '\n[platforms]\nmin_macos_version = "10.15"\nmacos_deployment_target = "10.13"\n'
+        )
 
-        self.assertEqual(toolchains.load_platforms(self.baseline), {"min_macos_version": "26.0"})
+        self.assertEqual(
+            toolchains.load_platforms(self.baseline),
+            {"min_macos_version": "10.15", "macos_deployment_target": "10.13"},
+        )
 
     def test_baseline_without_platforms_has_none(self) -> None:
         self.baseline.write_text(BASELINE)
@@ -1079,6 +1084,7 @@ class PlatformsTest(unittest.TestCase):
             "patch level": ('min_macos_version = "26.0.1"', "min_macos_version must be <major>.<minor>"),
             "not a string": ("min_macos_version = 26.0", "min_macos_version must be <major>.<minor>"),
             "unknown key": ('min_macos = "26.0"', "[platforms] has unknown key min_macos"),
+            "target major only": ('macos_deployment_target = "10"', "macos_deployment_target must be <major>.<minor>"),
         }
         for label, (line, message) in cases.items():
             with self.subTest(label):
@@ -1111,7 +1117,10 @@ class RealBaselineTest(unittest.TestCase):
     def test_repository_baseline_sets_the_org_minimum_macos(self) -> None:
         baseline = Path(__file__).resolve().parent.parent / "baseline.toml"
 
-        self.assertEqual(toolchains.load_platforms(baseline), {"min_macos_version": "26.0"})
+        self.assertEqual(
+            toolchains.load_platforms(baseline),
+            {"min_macos_version": "10.15", "macos_deployment_target": "10.13"},
+        )
 
     def test_renovate_preset_disables_exactly_the_baseline_tools(self) -> None:
         root = Path(__file__).resolve().parent.parent

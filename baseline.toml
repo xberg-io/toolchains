@@ -59,5 +59,9 @@ aws-cli = "2.39.4"
 # Operating system minimums every repository builds for, read by binding generators and package templates instead
 # of each repository choosing its own. min_macos_version uses alef's `min_macos_version` name and form.
 [platforms]
-# Org decision: macOS 26, the release that ships the Swift 6.2 PackageDescription platform enum (`.v26`).
-min_macos_version = "26.0"
+# The floors are the lowest macOS that the code and the toolchain need, not the macOS of the build runners.
+# Swift packages: macOS 10.15, the lowest release that runs the generated async/await code (alef ADR 0021).
+min_macos_version = "10.15"
+# Shipped binaries and wheels: macOS 10.13 on Intel. clang and rustc raise an arm64 target to 11.0, the
+# first macOS on Apple Silicon.
+macos_deployment_target = "10.13"

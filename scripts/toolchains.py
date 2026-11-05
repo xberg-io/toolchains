@@ -48,7 +48,11 @@ RUST = "rust"
 ALIASES = {"nodejs": "node", "golang": "go", "tofu": "opentofu"}
 # Tools no repository may pin, in any backend spelling, with the replacement.
 # alef's `[crates.swift] min_macos_version` and SWIFT_MIN_MACOS use the same name and form.
-PLATFORM_KEYS = {"min_macos_version": re.compile(r"\d+\.\d+")}
+# macos_deployment_target is the MACOSX_DEPLOYMENT_TARGET of every shipped macOS binary.
+PLATFORM_KEYS = {
+    "min_macos_version": re.compile(r"\d+\.\d+"),
+    "macos_deployment_target": re.compile(r"\d+\.\d+"),
+}
 UNPINNED = {"ai-rulez": "remove it from mise.toml and run `npx -y ai-rulez@latest`"}
 QUOTED = r"""(?:"[^"]*"|'[^']*')"""
 # Every root file name go-task v3 reads, in any letter case (macOS and Windows match case-insensitively).
