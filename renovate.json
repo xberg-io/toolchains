@@ -34,6 +34,11 @@
       "allowedVersions": "<1.37.0"
     },
     {
+      "description": "GitHub-release pins stay bare versions, compared as strings by the baseline and every repository",
+      "matchDepNames": ["/^github:/"],
+      "extractVersion": "^v?(?<version>.+)$"
+    },
+    {
       "description": "nextest tags releases as cargo-nextest-<version>, matching the baseline's version_prefix",
       "matchDepNames": ["github:nextest-rs/nextest"],
       "extractVersion": "^cargo-nextest-(?<version>.+)$"

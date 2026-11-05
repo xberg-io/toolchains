@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.14.3] - 2026-11-05
+
+### Fixed
+
+- poly is pinned as `0.32.5` again: the Renovate baseline update in 1.14.2 wrote `v0.32.5`, unlike every other pin.
+  Renovate now strips a leading `v` from GitHub release tags.
+
+### Changed
+
+- cargo-zigbuild 0.24.1, OpenTofu 1.13.8, aws-cli 2.39.4 (Renovate, shipped in 1.14.2).
+
 ## [1.14.2] - 2026-11-05
 
 ### Changed
