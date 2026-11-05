@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-11-05
+
+### Changed
+
+- alef 0.124.2: generated Dart e2e tests compare `u64` streaming-chunk fields as `BigInt`.
+
 ## [1.14.1] - 2026-11-05
 
 ### Changed
