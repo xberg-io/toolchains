@@ -38,6 +38,11 @@ read_only = true
 discover_skills = "repo"
 tools = ["find_skill", "load_skill"]
 
+[exposure]
+mcp_server_tokens = 1150
+start_budget = 5650
+codex_start_budget = 5750
+
 [lock]
 include_outputs = false
 
