@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Go CI tools in the baseline: `golangci-lint` 2.15.0, `go:golang.org/x/vuln/cmd/govulncheck` 1.9.0 and
+  `go:github.com/google/go-licenses/v2` 2.0.1, as the org Go rule requires them in CI.
+
 ## [1.15.1] - 2026-11-06
 
 ### Changed
