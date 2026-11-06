@@ -54,6 +54,10 @@ jobs:
               "github:DevinR528/cargo-sort": {"linux-arm64"},  # no arm64 release asset
               "dotnet": platforms,  # dotnet-install script, no artifact checksum
               "rust": platforms,  # rustup-managed
+              # mise's go: backend builds these with `go install`; the module proxy's checksum
+              # database verifies the source instead of a locked artifact.
+              "go:golang.org/x/vuln/cmd/govulncheck": platforms,
+              "go:github.com/google/go-licenses/v2": platforms,
           }
           tools = tomllib.load(open("mise.toml", "rb"))["tools"]
           locked = tomllib.load(open("mise.lock", "rb"))["tools"]

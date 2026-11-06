@@ -41,6 +41,11 @@ cargo-deny = "0.20.2"
 "github:rust-cross/cargo-zigbuild" = "0.24.1"
 "github:rustwasm/wasm-pack" = "0.15.1"
 
+# Go tooling
+golangci-lint = "2.15.0"
+"go:golang.org/x/vuln/cmd/govulncheck" = "1.9.0"
+"go:github.com/google/go-licenses/v2" = "2.0.1"
+
 # CI and infrastructure CLIs
 gh = "2.103.3"
 yq = "4.54.2"
