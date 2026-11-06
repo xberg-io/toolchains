@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-11-06
+
 ### Added
 
 - Go CI tools in the baseline: `golangci-lint` 2.15.0, `go:golang.org/x/vuln/cmd/govulncheck` 1.9.0 and
