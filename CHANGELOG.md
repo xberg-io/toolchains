@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `[platforms] min_macos_version = "15.0"` (was `26.0`): macOS 15 is the minimum for every macOS artifact, the oldest
+  macOS Apple still supports. It moves when Apple drops a release.
+
 ## [1.14.3] - 2026-11-05
 
 ### Fixed

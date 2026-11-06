@@ -59,5 +59,5 @@ aws-cli = "2.39.4"
 # Operating system minimums every repository builds for, read by binding generators and package templates instead
 # of each repository choosing its own. min_macos_version uses alef's `min_macos_version` name and form.
 [platforms]
-# Org decision: macOS 26, the release that ships the Swift 6.2 PackageDescription platform enum (`.v26`).
-min_macos_version = "26.0"
+# The oldest macOS Apple still supports, not the lowest the code needs; it moves when Apple drops a release.
+min_macos_version = "15.0"

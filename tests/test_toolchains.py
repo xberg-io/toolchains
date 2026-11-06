@@ -1111,7 +1111,7 @@ class RealBaselineTest(unittest.TestCase):
     def test_repository_baseline_sets_the_org_minimum_macos(self) -> None:
         baseline = Path(__file__).resolve().parent.parent / "baseline.toml"
 
-        self.assertEqual(toolchains.load_platforms(baseline), {"min_macos_version": "26.0"})
+        self.assertEqual(toolchains.load_platforms(baseline), {"min_macos_version": "15.0"})
 
     def test_renovate_preset_disables_exactly_the_baseline_tools(self) -> None:
         root = Path(__file__).resolve().parent.parent

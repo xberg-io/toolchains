@@ -221,14 +221,14 @@ picks its own:
 
 ```toml
 [platforms]
-min_macos_version = "26.0"
+min_macos_version = "15.0"
 ```
 
-`min_macos_version` is the macOS deployment target for every Swift package, binding and macOS build. It uses the
-name and `<major>.<minor>` form of alef's `[crates.swift] min_macos_version`, whose default is alef's
-`SWIFT_MIN_MACOS`; SwiftPM takes the major only, so `26.0` renders as `.macOS(.v26)`, which needs
-`swift-tools-version` 6.2. `check` and `sync` fail with exit 2 on an unknown key or a value that is not
-`<major>.<minor>`.
+`min_macos_version` is the macOS deployment target for every Swift package, binding and macOS build: the oldest
+macOS Apple still supports, moved when Apple drops a release. Build runners stay on `macos-26`; a runner label is not
+a deployment target. It uses the name and `<major>.<minor>` form of alef's `[crates.swift] min_macos_version`, whose
+default is alef's `SWIFT_MIN_MACOS`; SwiftPM takes the major only, so `15.0` renders as `.macOS(.v15)`. `check` and
+`sync` fail with exit 2 on an unknown key or a value that is not `<major>.<minor>`.
 
 Read it from the baseline tag the repository follows, never a copy:
 
