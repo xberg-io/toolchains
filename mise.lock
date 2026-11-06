@@ -34,7 +34,7 @@ provenance = "github-attestations"
 [[tools."github:Goldziher/poly"]]
 version = "0.33.1"
 backend = "github:Goldziher/poly"
-specifiers = ["0.32.5"]
+specifiers = ["0.33.1"]
 
 [tools."github:Goldziher/poly"."platforms.linux-arm64"]
 checksum = "sha256:ca98da5823d219c5b7302cdfdc23ba32cc9d4d4be74c4a0f9436fc2901a49a2a"

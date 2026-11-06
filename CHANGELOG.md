@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-11-06
+
+### Changed
+
+- alef 0.127.1: generated Package.swift defaults to macOS 15, and alef's format gates work with poly 0.33.
+- poly 0.33.1 (Renovate). This repository follows its own baseline again: its `mise.toml` pinned poly 0.32.5
+  while the Renovate lock update recorded 0.33.1, which failed CI.
+
 ### Fixed
 
 - The `lint-format` task set's `format:check` runs `poly fmt .`: poly 0.33 removed `--check` (the dry run is the

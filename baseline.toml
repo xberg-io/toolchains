@@ -28,7 +28,7 @@ rust = "1.99.1"
 # Org CLIs
 "github:Goldziher/poly" = "0.33.1"
 "github:Goldziher/adrlint" = "0.4.1"
-"github:xberg-io/alef" = "0.126.1"
+"github:xberg-io/alef" = "0.127.1"
 "github:Goldziher/gh-actions-updater" = "0.4.0"
 
 # Rust tooling
