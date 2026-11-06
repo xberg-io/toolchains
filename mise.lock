@@ -32,33 +32,33 @@ url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/3849249
 provenance = "github-attestations"
 
 [[tools."github:Goldziher/poly"]]
-version = "0.32.5"
+version = "0.33.1"
 backend = "github:Goldziher/poly"
 specifiers = ["0.32.5"]
 
 [tools."github:Goldziher/poly"."platforms.linux-arm64"]
-checksum = "sha256:68dba781ee81ab40023e22c3ee605c6e9e39dc1e44e152e735e354f7d999df51"
+checksum = "sha256:ca98da5823d219c5b7302cdfdc23ba32cc9d4d4be74c4a0f9436fc2901a49a2a"
 checksum_source = "mise-versions"
-url = "https://github.com/Goldziher/poly/releases/download/v0.32.5/poly-0.32.5-aarch64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/710082727"
+url = "https://github.com/Goldziher/poly/releases/download/v0.33.1/poly-0.33.1-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/714406223"
 
 [tools."github:Goldziher/poly"."platforms.linux-x64"]
-checksum = "sha256:38ce40aedfead50c4a0422bf7f3c003106415a5650edb3c985ee714363a2bd1f"
+checksum = "sha256:00162fbc6b754be29ce65c0423a35beaa359c04dfc85d98b6f1b91a47920b361"
 checksum_source = "mise-versions"
-url = "https://github.com/Goldziher/poly/releases/download/v0.32.5/poly-0.32.5-x86_64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/710102938"
+url = "https://github.com/Goldziher/poly/releases/download/v0.33.1/poly-0.33.1-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/714438077"
 
 [tools."github:Goldziher/poly"."platforms.macos-arm64"]
-checksum = "sha256:1307954e499e2663f81670a8a332d08b7be640593eddd0d3deae24af1b77aa15"
+checksum = "sha256:32de10e289b25e2b28ff9d408d3fba1cfd93a1eedd2a6eab44395495408be611"
 checksum_source = "mise-versions"
-url = "https://github.com/Goldziher/poly/releases/download/v0.32.5/poly-0.32.5-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/710740659"
+url = "https://github.com/Goldziher/poly/releases/download/v0.33.1/poly-0.33.1-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/714414492"
 
 [tools."github:Goldziher/poly"."platforms.windows-x64"]
-checksum = "sha256:dfd3fdd5f1fc86e8c5c65ca905ee4dbe59629b26b5e26d911706893172354d35"
+checksum = "sha256:37e488c56b9018192c4186e2b8e83dfda663ffe77e82dac11db6349564aa7020"
 checksum_source = "mise-versions"
-url = "https://github.com/Goldziher/poly/releases/download/v0.32.5/poly-0.32.5-x86_64-pc-windows-msvc.zip"
-url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/710153787"
+url = "https://github.com/Goldziher/poly/releases/download/v0.33.1/poly-0.33.1-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/714419681"
 
 [[tools.node]]
 version = "26.13.0"
