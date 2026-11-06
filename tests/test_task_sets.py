@@ -870,7 +870,7 @@ class MiseValidatesTaskSetsTest(unittest.TestCase):
 
         self.assertEqual(
             self.calls.read_text().splitlines(),
-            ["poly lint .", "poly fmt --check .", "pnpm --dir site install --frozen-lockfile", "pnpm --dir site build"],
+            ["poly lint .", "poly fmt .", "pnpm --dir site install --frozen-lockfile", "pnpm --dir site build"],
         )
 
     def test_shared_file_task_runs_with_usage_args(self) -> None:

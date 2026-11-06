@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The `lint-format` task set's `format:check` runs `poly fmt .`: poly 0.33 removed `--check` (the dry run is the
+  default and exits 1 when a file would change), so the shared task failed in every repository on the 0.33 baseline.
+
 ## [1.15.0] - 2026-11-06
 
 ### Changed

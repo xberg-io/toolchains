@@ -18,7 +18,7 @@ jobs:
       - name: This repository follows its own baseline
         run: python scripts/toolchains.py check --baseline baseline.toml
       - run: poly lint .
-      - run: poly fmt --check .
+      - run: poly fmt .
       - name: Validate the Renovate preset and config
         run: npx --yes --package renovate@44.188.4 -- renovate-config-validator --strict renovate.json default.json
 

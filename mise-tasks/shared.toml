@@ -16,4 +16,4 @@ run = "poly fmt --fix ."
 
 ["format:check"]
 description = "Check code formatting without modifications"
-run = "poly fmt --check ."
+run = "poly fmt ."
