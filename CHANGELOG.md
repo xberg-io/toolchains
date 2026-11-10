@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-11-10
+
+### Changed
+
+- poly 0.34.2, adrlint 0.5.0, alef 0.129.1, gradle 9.9.0, yq 4.54.3 and aws-cli 2.39.7 (Renovate). This repository's
+  own `mise.toml` follows the new poly pin, as the drift check requires.
+
 ## [1.16.0] - 2026-11-06
 
 ### Added
