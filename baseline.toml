@@ -23,7 +23,7 @@ gradle = "9.9.0"
 ruby = "4.0.9"
 dotnet = "10.0.403"
 zig = "0.17.0"
-rust = "1.99.1"
+rust = "1.100.0"
 
 # Org CLIs
 "github:Goldziher/poly" = "0.34.2"

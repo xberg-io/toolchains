@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-11-13
+
+### Changed
+
+- Update the Rust baseline to 1.100.0.
+
 ## [1.17.0] - 2026-11-10
 
 ### Changed
