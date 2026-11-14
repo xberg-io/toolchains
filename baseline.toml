@@ -28,13 +28,13 @@ rust = "1.100.0"
 # Org CLIs
 "github:Goldziher/poly" = "0.34.2"
 "github:Goldziher/adrlint" = "0.5.0"
-"github:xberg-io/alef" = "0.129.1"
+"github:xberg-io/alef" = "0.129.3"
 "github:Goldziher/gh-actions-updater" = "0.4.0"
 
 # Rust tooling
 sccache = "0.19.0"
 cargo-deny = "0.20.2"
-"github:nextest-rs/nextest" = { version = "0.9.151", version_prefix = "cargo-nextest-" }
+"github:nextest-rs/nextest" = { version = "0.9.152", version_prefix = "cargo-nextest-" }
 "github:taiki-e/cargo-llvm-cov" = "0.9.1"
 "github:bnjbvr/cargo-machete" = "0.9.2"
 "github:DevinR528/cargo-sort" = "2.1.4"
@@ -59,7 +59,7 @@ helm = "4.3.2"
 kubectl = "1.36.6"
 opentofu = "1.13.9"
 k6 = "2.4.0"
-aws-cli = "2.40.2"
+aws-cli = "2.40.3"
 
 # Operating system minimums every repository builds for, read by binding generators and package templates instead
 # of each repository choosing its own. min_macos_version uses alef's `min_macos_version` name and form.
