@@ -36,7 +36,7 @@ sccache = "0.19.0"
 cargo-deny = "0.20.2"
 "github:nextest-rs/nextest" = { version = "0.9.152", version_prefix = "cargo-nextest-" }
 "github:taiki-e/cargo-llvm-cov" = "0.9.1"
-"github:bnjbvr/cargo-machete" = "0.10.0"
+"github:bnjbvr/cargo-machete" = "0.10.1"
 "github:DevinR528/cargo-sort" = "2.1.4"
 "github:rust-cross/cargo-zigbuild" = "0.24.1"
 "github:rustwasm/wasm-pack" = "0.15.1"
