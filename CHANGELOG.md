@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Renovate keeps java on the 25 LTS line and rejects Adoptium respin numbers (`+10000000N`) without a trailing
+  `.LTS`, which the 1.21.0 rule let through as `27.0.1+100000004`.
+
 ## [1.21.0] - 2026-11-19
 
 ### Changed
