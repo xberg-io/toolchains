@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Renovate no longer proposes the uninstallable `temurin-25.0.5+100000002.0.LTS` Java pin, and holds ruby below 4.0.10
+  until RubyInstaller ships a Windows build.
+
 ### Fixed
 
 - `check` fails when a `pnpm-lock.yaml` records another pnpm release than the `packageManager` of the `package.json`

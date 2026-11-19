@@ -34,6 +34,18 @@
       "allowedVersions": "<1.37.0"
     },
     {
+      "description": "Adoptium's 25.0.5.1+2 respin reads as temurin-25.0.5+100000002.0.LTS, a version mise cannot install",
+      "matchFileNames": ["baseline.toml"],
+      "matchDepNames": ["java"],
+      "allowedVersions": "!/\\+1000000\\d+\\./"
+    },
+    {
+      "description": "ruby waits for a RubyInstaller Windows build: mise locks windows-x64 from oneclick/rubyinstaller2; lift when it ships 4.0.10",
+      "matchFileNames": ["baseline.toml"],
+      "matchDepNames": ["ruby"],
+      "allowedVersions": "<4.0.10"
+    },
+    {
       "description": "GitHub-release pins stay bare versions, compared as strings by the baseline and every repository",
       "matchDepNames": ["/^github:/"],
       "extractVersion": "^v?(?<version>.+)$"
