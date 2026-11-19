@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.19.1] - 2026-11-19
+
+### Fixed
+
+- ruby stays on 4.0.9: RubyInstaller has no Windows build of 4.0.10 yet, so the baseline could not be locked for
+  `windows-x64`.
+
 ## [1.19.0] - 2026-11-19
 
 ### Changed
