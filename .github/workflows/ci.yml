@@ -11,6 +11,8 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      POLY_TRUST: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: xberg-io/actions/setup-mise@v1
