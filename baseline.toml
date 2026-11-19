@@ -27,7 +27,7 @@ zig = "0.17.1"
 rust = "1.100.0"
 
 # Org CLIs
-"github:Goldziher/poly" = "0.35.0"
+"github:Goldziher/poly" = "0.36.0"
 "github:Goldziher/adrlint" = "0.5.2"
 "github:xberg-io/alef" = "0.130.4"
 "github:Goldziher/gh-actions-updater" = "0.4.0"

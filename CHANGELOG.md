@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-11-19
+
+### Changed
+
+- poly 0.36.0. The project now lives at polylint/polylint; the `github:Goldziher/poly` key still resolves through
+  GitHub's redirect and its release assets are unchanged. This repository's own `mise.toml` and `poly.lock` follow.
+
 ## [1.19.1] - 2026-11-19
 
 ### Fixed
