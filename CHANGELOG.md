@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-11-19
+
 ### Changed
 
+- poly 0.36.1: clang-format stays on C, C++ and Objective-C unless `files` opts other languages in, catalog tools
+  honour `files`/`exclude`, `migrate --to-v2` converts only poly configs, and tsrs type-checks past a declared
+  `@types` entry. This repository's own `mise.toml` follows.
 - Renovate no longer proposes the uninstallable `temurin-25.0.5+100000002.0.LTS` Java pin, and holds ruby below 4.0.10
   until RubyInstaller ships a Windows build.
 
