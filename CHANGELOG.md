@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-11-19
+
+### Changed
+
+- dotnet 11.0.100 (from 10.0.403), maven 3.10.1 and zig 0.17.1.
+- From Renovate since 1.18.0: node 26.13.1, pnpm 12.21.0, uv 0.13.9, go 1.27.4, gradle 9.9.1, ruby 4.0.10, poly
+  0.35.0, adrlint 0.5.2, alef 0.130.4, cargo-deny 0.21.0, nextest 0.9.152, cargo-machete 0.10.1, govulncheck 1.10.0,
+  gh 2.105.0, helm 4.3.2, k6 2.4.0 and aws-cli 2.41.1.
+- This repository's own `mise.toml` follows node 26.13.1 and poly 0.35.0; `poly.lock` replaces `poly-hooks.lock`, and
+  the CI Renovate config validator moves to 44.252.8.
+
+### Fixed
+
+- java stays on `temurin-25.0.5+8.0.LTS`: Renovate's `temurin-25.0.5+100000002.0.LTS` is not a version mise can
+  install.
+
+kubectl stays on 1.36 while the staging GKE control plane is on 1.35.
+
 ## [1.18.0] - 2026-11-13
 
 ### Changed

@@ -20,7 +20,7 @@ jobs:
       - run: poly lint .
       - run: poly fmt .
       - name: Validate the Renovate preset and config
-        run: npx --yes --package renovate@44.188.4 -- renovate-config-validator --strict renovate.json default.json
+        run: npx --yes --package renovate@44.252.8 -- renovate-config-validator --strict renovate.json default.json
 
   resolve-baseline:
     # Every baseline pin must resolve, with checksums, on every platform consumers lock for.

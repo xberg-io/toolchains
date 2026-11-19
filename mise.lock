@@ -34,7 +34,7 @@ provenance = "github-attestations"
 [[tools."github:Goldziher/poly"]]
 version = "0.35.0"
 backend = "github:Goldziher/poly"
-specifiers = ["0.34.2"]
+specifiers = ["0.35.0"]
 
 [tools."github:Goldziher/poly"."platforms.linux-arm64"]
 checksum = "sha256:d61709fb090622ffc376aecd1dc887db70b3f3b62d17245aad3ccb4bc19e5fbc"
@@ -63,7 +63,7 @@ url_api = "https://api.github.com/repos/Goldziher/poly/releases/assets/749685671
 [[tools.node]]
 version = "26.13.1"
 backend = "core:node"
-specifiers = ["26.13.0"]
+specifiers = ["26.13.1"]
 
 [tools.node."platforms.linux-arm64"]
 checksum = "sha256:80a330b35415382878df18d41afbd106ea89bfb3be0087d6608e289a14c5cc7d"
