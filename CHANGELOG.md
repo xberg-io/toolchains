@@ -2,8 +2,12 @@
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-11-19
+
 ### Changed
 
+- alef 0.131.0: generated `poly.toml` files use the poly v2 schema, existing v1 files are converted in place, and
+  `[workspace.poly]` gains `skif`, `tsrs` and `harper` settings.
 - Renovate keeps java on the 25 LTS line and rejects Adoptium respin numbers (`+10000000N`) without a trailing
   `.LTS`, which the 1.21.0 rule let through as `27.0.1+100000004`.
 
