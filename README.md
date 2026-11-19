@@ -57,7 +57,9 @@ python3 /tmp/toolchains/scripts/toolchains.py check --baseline /tmp/toolchains/b
 ```
 
 `sync` also moves the version files mise does not read (see the table below), so a baseline bump is one
-`sync`; it prints Dockerfile tags that still disagree, since it does not rewrite them.
+`sync`; it prints Dockerfile tags that still disagree, since it does not rewrite them, and every `pnpm-lock.yaml`
+still recording the old pnpm. Since pnpm records `packageManager` in its lockfile, after a pnpm move run
+`mise exec -- pnpm install --lockfile-only` in each listed directory, then `pnpm install --frozen-lockfile` there.
 
 `mise lock` after `sync` is required, not optional: shared tasks can pin their own tools (`governance:check` and the
 `plugin` tasks run on a task-level `node = "26.13.0"`), and a lock without that version fails `--locked` CI with
@@ -86,6 +88,7 @@ the files it compared and the ones it could not, and exits 1 when one disagrees:
 | `.ruby-version` | `ruby` | exact; a `ruby-` prefix is ignored | rewrites, keeping `ruby-` |
 | `.tool-versions` | each baseline tool it names (`nodejs`, `golang` included) | exact, first version; `system`, `lts` and `latest` are skipped, `java` only when `temurin-<x.y.z>+<build>` | no |
 | `package.json` `packageManager` | `pnpm` | exact; a `+sha512.…` suffix is ignored, other package managers are skipped | rewrites; a `+sha512.<hex>` suffix is recomputed from the npm registry's `dist.integrity` for the new release, and `sync` fails rather than drop it when the registry cannot be read |
+| `pnpm-lock.yaml` | the `packageManager` of the `package.json` in the same directory | exact pnpm release the lock records (pnpm 11+); a lock without one, or without a pnpm `packageManager` beside it, is skipped | no: it runs no pnpm, and lists each stale lock with the directory to run `pnpm install --lockfile-only` in |
 | nested `rust-toolchain.toml`, any `rust-toolchain` | `rust` | exact, like the root file: `1.99` is drift against `1.99.1`; named channels (`nightly`, `nightly-2026-01-01`, `stable`, `beta`) are listed as not checked; invalid TOML is drift | rewrites numeric channels |
 | `Dockerfile`, `Dockerfile.<name>`, `*.Dockerfile`, `Containerfile` | `node`, `python`, `go`, `ruby` | major.minor of official `node`, `python`, `golang`, `ruby` images | no, prints the drift |
 

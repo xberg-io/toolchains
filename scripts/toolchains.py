@@ -8,14 +8,16 @@ when the repository root holds a go-task Taskfile or `.task/` directory, since m
 Version files mise does not read must agree too: `.nvmrc`, `.node-version`, `.python-version`, `.ruby-version`,
 `.tool-versions`, nested `rust-toolchain.toml` and `rust-toolchain`, `package.json` `packageManager: pnpm@X`
 and Dockerfile `FROM node|python|golang|ruby:<tag>` (major.minor only), except the paths toolchains.toml
-`file_overrides` exempts with a reason. A mise.toml task's `tools` pin of a baseline tool must agree too.
+`file_overrides` exempts with a reason. A mise.toml task's `tools` pin of a baseline tool must agree too, and so
+must the pnpm release a pnpm-lock.yaml records with the packageManager of the package.json beside it.
 Exits 0 when consistent, 1 on drift, 2 on unusable input or when nothing was checked.
 
 `sync` rewrites those pins to the baseline versions in place, skipping overridden tools, moves task `tools` pins
 and the version files above except `.tool-versions` and Dockerfiles to the baseline or override, and records the
 baseline ref in toolchains.toml. It edits matching lines only, so comments and layout survive. A `packageManager`
 value with a `+sha512.<hex>` suffix gets the new release's hash from the npm registry; sync fails when it cannot
-read it.
+read it. It does not run pnpm: it lists each pnpm-lock.yaml left recording the old release, to refresh with
+`pnpm install --lockfile-only` once the new pnpm is installed.
 
 Task sets: toolchains.toml `task_sets` names sets under task-sets/. `sync` writes their tasks to
 mise-tasks/shared.toml, copies their file tasks to mise-tasks/.shared/ and adds both to mise.toml's
@@ -330,6 +332,7 @@ def check_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[st
     check_file_overrides(files, exempt, report)
     paths = [path for path in files if path not in exempt]
     found = version_files.check(repo, paths, *expectations(baseline, overrides))
+    version_files.check_pnpm_locks(repo, files, found)
     report.errors += found.errors
     report.files += found.files
     report.unchecked_files += found.unchecked
@@ -961,6 +964,7 @@ class SyncResult:
     shared: list[str]
     files: list[str]
     docker: list[str]
+    locks: list[str] = field(default_factory=list)
 
 
 def pnpm_integrity(version: str, algorithm: str) -> str:
@@ -1016,8 +1020,9 @@ def plan_version_files(repo: Path, baseline: dict[str, Pin], overrides: dict[str
 def sync(baseline_path: Path, repo: Path, ref: str | None, sets_dir: Path = SETS_DIR) -> SyncResult:
     """Move every non-overridden pin and version file to the baseline and write the selected task sets.
 
-    Returns the tools whose pin changed, the shared task files written or deleted, the version files rewritten
-    and the Dockerfile drift left to fix by hand. Writes nothing on error.
+    Returns the tools whose pin changed, the shared task files written or deleted, the version files rewritten,
+    the Dockerfile drift left to fix by hand and the pnpm lockfiles left recording another pnpm than their
+    packageManager. Writes nothing on error.
     """
     baseline = load_baseline(baseline_path)
     pins = repo_pins(repo)
@@ -1072,7 +1077,8 @@ def sync(baseline_path: Path, repo: Path, ref: str | None, sets_dir: Path = SETS
         if not path.is_file() or read_raw(path) != content:
             write_raw(path, content)
     files = sorted(path.relative_to(repo).as_posix() for path in file_writes)
-    return SyncResult(sorted(changed), touched, files, docker)
+    locks = [str(lock) for lock in version_files.pnpm_locks(repo, repository_files(repo)) if lock.stale]
+    return SyncResult(sorted(changed), touched, files, docker, locks)
 
 
 def write_shared(repo: Path, shared: dict[str, tuple[bytes, int]], stale: list[str]) -> list[str]:
@@ -1138,6 +1144,8 @@ def run_sync(args: argparse.Namespace) -> int:
         print(f"updated {len(result.files)} version files: {', '.join(result.files)}")
     if result.docker:
         print(f"Dockerfile image tags are not rewritten; fix by hand: {'; '.join(result.docker)}")
+    if result.locks:
+        print(f"pnpm lockfiles are not rewritten; refresh each before committing: {'; '.join(result.locks)}")
     return 0
 
 

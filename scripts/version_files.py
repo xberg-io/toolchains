@@ -44,6 +44,13 @@ NOT_A_VERSION = frozenset({"system", "lts", "latest"})
 TEMURIN = re.compile(r"temurin-\d+\.\d+\.\d+\+\S+")
 CHANNEL_LINE = re.compile(r"""^(\s*channel\s*=\s*)(["'])(.*?)(\2)""", re.MULTILINE)
 PACKAGE_MANAGER = re.compile(r'("packageManager"\s*:\s*"pnpm@)([^"+]*)((?:\+[^"]*)?)(")')
+PNPM_LOCK = "pnpm-lock.yaml"
+# The pnpm release a lockfile records for its package.json packageManager (pnpm 11+), which a frozen-lockfile
+# install compares with packageManager and rejects as outdated when they differ.
+LOCKED_PNPM = re.compile(
+    r"""^\s+packageManagerDependencies:[ \t]*\n\s+pnpm:[ \t]*\n\s+specifier:[^\n]*\n\s+version:[ \t]*['"]?([^'"\s]+)""",
+    re.MULTILINE,
+)
 
 # A baseline key to (expected version, how a message names it), or None when the baseline does not cover it.
 Wanted = Callable[[str], tuple[str, str] | None]
@@ -61,6 +68,27 @@ class Findings:
     files: list[str] = field(default_factory=list)
     unchecked: list[str] = field(default_factory=list)
     pin_keys: set[str] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class LockedPnpm:
+    path: str
+    recorded: str
+    declared: str
+
+    @property
+    def stale(self) -> bool:
+        return self.recorded != self.declared
+
+    @property
+    def directory(self) -> str:
+        return self.path.rpartition("/")[0] or "."
+
+    def __str__(self) -> str:
+        return (
+            f"{self.path} records pnpm {self.recorded}, its package.json packageManager is pnpm@{self.declared}; "
+            f"run `pnpm install --lockfile-only` in {self.directory}"
+        )
 
 
 def read_text(path: Path) -> str:
@@ -251,6 +279,33 @@ def check(repo: Path, paths: list[str], wanted: Wanted, key_for: KeyFor) -> Find
         if compared:
             found.files.append(path)
     return found
+
+
+def pnpm_locks(repo: Path, paths: list[str]) -> list[LockedPnpm]:
+    """The pnpm release every pnpm-lock.yaml among paths records, beside the packageManager of the package.json in
+    its directory, which is the one pnpm compares it with. Locks without either are left out."""
+    present = set(paths)
+    locks = []
+    for path in paths:
+        if path.rsplit("/", 1)[-1] != PNPM_LOCK:
+            continue
+        directory = path.rpartition("/")[0]
+        package = f"{directory}/package.json" if directory else "package.json"
+        if package not in present:
+            continue
+        declared = PACKAGE_MANAGER.search(read_text(repo / package))
+        recorded = LOCKED_PNPM.search(read_text(repo / path))
+        if declared and recorded:
+            locks.append(LockedPnpm(path, recorded.group(1), declared.group(2)))
+    return locks
+
+
+def check_pnpm_locks(repo: Path, paths: list[str], found: Findings) -> None:
+    """A lock recording another pnpm than its packageManager fails `pnpm install --frozen-lockfile`."""
+    for lock in pnpm_locks(repo, paths):
+        found.files.append(lock.path)
+        if lock.stale:
+            found.errors.append(f"pnpm: {lock}")
 
 
 def rewritten_rust(path: str, text: str, version: str) -> str:

@@ -38,6 +38,15 @@ def fake_registry(integrity: str = PNPM_INTEGRITY) -> mock.Mock:
     )
 
 
+def pnpm_lock(version: str) -> str:
+    """A pnpm 11+ lockfile whose env document records version for the package.json packageManager."""
+    return (
+        "---\nlockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    configDependencies: {}\n"
+        f"    packageManagerDependencies:\n      pnpm:\n        specifier: {version}\n        version: {version}\n"
+        "\n---\nlockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies: {}\n"
+    )
+
+
 class CheckTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -446,6 +455,38 @@ class VersionFilesTest(VersionFileFixture):
 
         self.assertEqual(code, 1)
         self.assertIn("drift: node: .nvmrc pins 24.22.1, toolchains.toml override is 22.20.0", err)
+
+    def test_pnpm_lock_recording_another_pnpm_than_package_manager_is_drift(self) -> None:
+        self.write("web/package.json", '{"packageManager": "pnpm@10.4.1+sha512.abc"}')
+        self.write("web/pnpm-lock.yaml", pnpm_lock("9.15.0"))
+
+        code, _, err = self.run_main()
+
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "drift: pnpm: web/pnpm-lock.yaml records pnpm 9.15.0, its package.json packageManager is pnpm@10.4.1; "
+            "run `pnpm install --lockfile-only` in web",
+            err,
+        )
+
+        self.write("web/pnpm-lock.yaml", pnpm_lock("10.4.1"))
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertIn("checked 2 version files: web/package.json, web/pnpm-lock.yaml", out)
+
+    def test_pnpm_lock_is_compared_with_its_own_package_json_only(self) -> None:
+        self.write("package.json", '{"packageManager": "pnpm@10.4.1"}')
+        self.write("pnpm-lock.yaml", "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies: {}\n")
+        self.write("orphan/pnpm-lock.yaml", pnpm_lock("9.15.0"))
+        self.write("yarn/package.json", '{"packageManager": "yarn@4.0.0"}')
+        self.write("yarn/pnpm-lock.yaml", pnpm_lock("9.15.0"))
+
+        code, out, err = self.run_main()
+
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("pnpm-lock.yaml", out)
 
     def test_vendored_and_installed_directories_are_skipped(self) -> None:
         self.write("node_modules/dep/package.json", '{"packageManager": "pnpm@8.0.0"}')
@@ -941,6 +982,40 @@ class SyncVersionFilesTest(unittest.TestCase):
                 self.assertEqual(code, 2)
                 self.assertIn(message, err)
                 self.assertEqual(self.read("package.json"), original)
+
+    def test_sync_lists_pnpm_locks_left_on_the_old_release_and_check_fails_until_refreshed(self) -> None:
+        self.write("frontend/package.json", '{"packageManager": "pnpm@9.15.0"}')
+        self.write("frontend/pnpm-lock.yaml", pnpm_lock("9.15.0"))
+        self.write("package.json", '{"packageManager": "pnpm@9.15.0"}')
+        self.write("pnpm-lock.yaml", pnpm_lock("9.15.0"))
+        self.write("current/package.json", '{"packageManager": "pnpm@10.4.1"}')
+        self.write("current/pnpm-lock.yaml", pnpm_lock("10.4.1"))
+
+        code, out, err = self.invoke("sync")
+
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(self.read("frontend/pnpm-lock.yaml"), pnpm_lock("9.15.0"))
+        self.assertIn(
+            "pnpm lockfiles are not rewritten; refresh each before committing: "
+            "frontend/pnpm-lock.yaml records pnpm 9.15.0, its package.json packageManager is pnpm@10.4.1; "
+            "run `pnpm install --lockfile-only` in frontend; "
+            "pnpm-lock.yaml records pnpm 9.15.0, its package.json packageManager is pnpm@10.4.1; "
+            "run `pnpm install --lockfile-only` in .",
+            out,
+        )
+        self.assertNotIn("current/pnpm-lock.yaml", out)
+
+        code, _, err = self.invoke("check")
+        self.assertEqual(code, 1)
+        self.assertIn("drift: pnpm: frontend/pnpm-lock.yaml records pnpm 9.15.0", err)
+
+        self.write("frontend/pnpm-lock.yaml", pnpm_lock("10.4.1"))
+        self.write("pnpm-lock.yaml", pnpm_lock("10.4.1"))
+        code, out, err = self.invoke("sync")
+        self.assertEqual((code, err), (0, ""))
+        self.assertNotIn("pnpm lockfiles", out)
+        code, _, err = self.invoke("check")
+        self.assertEqual(code, 0, err)
 
     def test_check_accepts_a_suffixed_package_manager_on_the_baseline(self) -> None:
         self.write("package.json", f'{{"packageManager": "pnpm@10.4.1+sha512.{PNPM_HEX}"}}')

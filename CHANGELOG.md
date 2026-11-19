@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `check` fails when a `pnpm-lock.yaml` records another pnpm release than the `packageManager` of the `package.json`
+  beside it, which makes `pnpm install --frozen-lockfile` fail with `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`.
+  `sync` moves `packageManager` but does not run pnpm, so it now lists each such lockfile with the directory to run
+  `pnpm install --lockfile-only` in.
+
 ## [1.20.0] - 2026-11-19
 
 ### Changed
