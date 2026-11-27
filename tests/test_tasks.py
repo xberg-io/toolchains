@@ -227,5 +227,25 @@ class DepsRefreshTest(StubbedTaskTest):
         )
 
 
+class DepsRefreshPythonTest(StubbedTaskTest):
+    def setUp(self) -> None:
+        super().setUp()
+        (self.root / "packages" / "python").mkdir(parents=True)
+        # Mirrors uv 0.13: a glob package name and --no-prerelease are rejected.
+        self.stub("uv", 'case " $* " in *" * "*|*" --no-prerelease "*) exit 2 ;; esac')
+
+    def test_update_upgrades_every_package_without_prereleases(self) -> None:
+        result = self.run_task("deps-refresh/refresh.sh", usage_mode="update", usage_lang="python")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.called(), ["uv sync --upgrade --prerelease disallow --no-install-project --no-install-workspace"]
+        )
+
+    def test_upgrade_upgrades_every_package(self) -> None:
+        result = self.run_task("deps-refresh/refresh.sh", usage_mode="upgrade", usage_lang="python")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.called(), ["uv sync --upgrade --no-install-project --no-install-workspace"])
+
+
 if __name__ == "__main__":
     unittest.main()
