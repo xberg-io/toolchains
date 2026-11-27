@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.24.1] - 2026-11-27
+
+### Fixed
+
+- The `deps-refresh` task set's `deps update python` runs `uv sync --upgrade --prerelease disallow`: uv 0.13 rejects
+  the `--upgrade-package "*"` glob and the `--no-prerelease` flag, so the Python refresh failed and stopped the task.
+
 ## [1.24.0] - 2026-11-27
 
 ### Changed
