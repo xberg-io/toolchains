@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-11-27
+
+### Changed
+
+- alef 0.132.8: the generated binding crates get macOS `dynamic_lookup` from their own `build.rs` instead of a
+  workspace-wide `.cargo/config.toml` rustflag.
+
 ## [1.23.0] - 2026-11-27
 
 ### Changed
