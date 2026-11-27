@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-11-27
+
+### Changed
+
+- alef 0.132.7, cargo-deny 0.22.1, sccache 0.20.1, cargo-llvm-cov 0.9.2, cargo-sort 2.1.5, pnpm 12.23.0, uv 0.13.10,
+  gradle 9.9.2, gh 2.106.0, kubectl 1.36.7, opentofu 1.13.10 and aws-cli 2.42.4.
+
 ## [1.22.0] - 2026-11-19
 
 ### Changed
